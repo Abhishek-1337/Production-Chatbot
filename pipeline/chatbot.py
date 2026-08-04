@@ -5,9 +5,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-agent = Agent(  
-  'openai:gpt-4o-mini',
-  instructions="You are an expert internal company AI assistant. Your job is to answer user questions using ONLY the provided document context below. If the context does not contain the answer, say 'I cannot find that in the documents.Do not invent facts outside of the provided context.",
+agent = Agent(
+  'openai-chat:gpt-4o-mini',
+  system_prompt="You are an expert internal company AI assistant. Your job is to answer user questions using ONLY the provided document context. If the context does not contain the answer, say 'I cannot find that in the documents.' Do not invent facts outside of the provided context.",
 )
 
 def retrieve_the_doc(query):
@@ -22,7 +22,7 @@ def retrieve_the_doc(query):
 
 def chat_with_doc(query):
     context = retrieve_the_doc(query)
-    prompt = f"Context: {context}\n\nQuestion: {query}\nAnswer:"
-    result = agent.run_sync(prompt)
+    user_prompt = f"Document context:\n{context}\n\nQuestion: {query}"
+    result = agent.run_sync(user_prompt)
     return result.output
 
