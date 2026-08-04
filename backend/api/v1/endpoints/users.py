@@ -2,10 +2,10 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -35,16 +35,18 @@ AUTH_USERNAME = os.getenv("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "admin123")
 AUTH_PASSWORD_HASH = os.getenv("AUTH_PASSWORD_HASH", "")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/token")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"),
+        hashed_password.encode("utf-8"),
+    )
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 RESOLVED_AUTH_PASSWORD_HASH = AUTH_PASSWORD_HASH or get_password_hash(AUTH_PASSWORD)
