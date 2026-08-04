@@ -16,9 +16,6 @@ def ingest_doc():
     )
 
     doc = pipe.run(result.markdown)
-    first_chunk = doc.chunks[0]
-    print(first_chunk.text)
-    print(first_chunk.embedding)
 
     chroma_client = chromadb.PersistentClient(path="./chroma_db")
     collection = chroma_client.get_or_create_collection(name="tms-doc")
