@@ -1,8 +1,7 @@
 from pathlib import Path
 from typing import Annotated
-
 from dotenv import load_dotenv
-
+from services.parser import parser
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,7 +80,7 @@ async def chat(
 
 @app.post("/upload")
 async def upload_document(
-    _current_user: Annotated[User, Depends(get_current_user)],
+    # _current_user: Annotated[User, Depends(get_current_user)],
     file: UploadFile = File(...),
 ):
     allowed_types = {
@@ -93,11 +92,24 @@ async def upload_document(
     # if file.upload_type not in allowed_types:
     #     raise HTTPException(status = 400, description = "File type is not allowed")
 
-    contents = await file.read()
-    print(contents)
+    # if not file.filename.lower().endswith(allowed_types):
+    #     raise HTTPException(status_code = 400, detail="Invalid extension. Only PDF files allowed.")
+    print(file.content_type)
+    parser(file)
 
+
+    # if file.content_type not in allowed_types:
+    #     raise HTTPException(status_code=400, detail="Invalid file type. Must be a PDF application.")
+    
+    # with open(file, 'r', encoding='utf-8') as file:
+    #     contents = await file.read()
+    #     print(contents)
     return {
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "size": len(contents),
+        "message": "check the console"
     }
+
+    # return {
+    #     "filename": file.filename,
+    #     "content_type": file.content_type,
+    #     "size": len(contents),
+    # }
