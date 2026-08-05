@@ -89,8 +89,9 @@ async def upload_document(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain",
     }
-    # if file.upload_type not in allowed_types:
-    #     raise HTTPException(status = 400, description = "File type is not allowed")
+    
+    if file.upload_type not in allowed_types:
+        raise HTTPException(status = 400, description = "File type is not allowed")
 
     # if not file.filename.lower().endswith(allowed_types):
     #     raise HTTPException(status_code = 400, detail="Invalid extension. Only PDF files allowed.")
