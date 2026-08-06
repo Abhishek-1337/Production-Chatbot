@@ -1,10 +1,8 @@
 from pathlib import Path
 from typing import Annotated
 from dotenv import load_dotenv
-from services.parser import parser
+from services import parser, ingest, doc_retrieval
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
-from services.ingest import ingest_doc
-
 from fastapi.middleware.cors import CORSMiddleware
 from nemoguardrails import LLMRails, RailsConfig
 from pydantic import BaseModel, Field
@@ -35,6 +33,9 @@ GUARDRAILS_CONFIG_PATH = BACKEND_DIR / "config" / "guardrails_config"
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
+
+class Query(BaseModel): 
+    query: str
 
 
 class ChatResponse(BaseModel):
@@ -79,41 +80,43 @@ async def chat(
     return ChatResponse(response=content)
 
 
+@app.post("/query")
+def query_doc(data: Query):
+    context = doc_retrieval.retrieve_the_doc(data.query.strip())
+    print(context)
+    return {
+        "context": context
+    }
+
+
+
 @app.post("/upload")
-async def upload_document(
+def upload_document(
     # _current_user: Annotated[User, Depends(get_current_user)],
     file: UploadFile = File(...),
 ):
-    allowed_types = {
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "text/plain",
-    }
+    try:
+        allowed_types = {
+            "application/pdf",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/plain",
+        } 
+        
+        if file.content_type not in allowed_types:
+            raise HTTPException(status = 400, description = "File type is not allowed")
     
-    if file.content_type not in allowed_types:
-        raise HTTPException(status = 400, description = "File type is not allowed")
-
-    # if not file.filename.lower().endswith(allowed_types):
-    #     raise HTTPException(status_code = 400, detail="Invalid extension. Only PDF files allowed.")
-    print(file.content_type)
-    text = parser(file)
-
-    ingest_doc(text)
-
-
-    # if file.content_type not in allowed_types:
-    #     raise HTTPException(status_code=400, detail="Invalid file type. Must be a PDF application.")
+        print(file.content_type)
+        text = parser.parser(file)
     
-    # with open(file, 'r', encoding='utf-8') as file:
-    #     contents = await file.read()
-    #     print(contents)
-    return {
-        "message": "check the console"
-    }
+        ingest.ingest_doc(text)
 
-    # return {
-    #     "filename": file.filename,
-    #     "content_type": file.content_type,
-    #     "size": len(contents),
-    # }
+        return {
+            "message": "Document is successfully upload. You can start querying the data."
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code = 500,
+            detail="Something went wrong"
+        )
+
