@@ -12,7 +12,7 @@ def ingest_doc(data):
     
         pipe = (
             Pipeline()
-            .chunk_with("recursive", tokenizer="gpt2", chunk_size=200, recipe="markdown")
+            .chunk_with("recursive", tokenizer="gpt2", chunk_size=256, recipe="markdown")
             # .chunk_with("semantic", chunk_size=512)
             .refine_with("overlap", context_size=50)
             .refine_with("embeddings", embedding_model="sentence-transformers/all-MiniLM-L6-v2")
@@ -36,12 +36,6 @@ def ingest_doc(data):
             ids=ids_list,
             embeddings=embeddings_list
         )
-    
-        return {
-            
-        }
+
     except Exception as e:
         raise RuntimeError(f"Error: {e}") from e
-
-    # all_data = collection.get()
-    # print(all_data)
