@@ -1,11 +1,13 @@
+from io import BytesIO
 from markitdown import MarkItDown
 from chonkie import Pipeline
 import chromadb
 
 
 def ingest_doc(data): 
-    # md = MarkItDown()
-    # result = md.convert("./tms-doc/tms.pdf")
+    md = MarkItDown()
+    text_bytes = data.encode("utf-8")
+    result = md.convert_stream(BytesIO(text_bytes), file_extension=".txt")
 
     pipe = (
         Pipeline()
@@ -15,11 +17,10 @@ def ingest_doc(data):
         .refine_with("embeddings", embedding_model="sentence-transformers/all-MiniLM-L6-v2")
     )
 
-    # doc = pipe.run(result.markdown)
-    doc = pipe.run(data)
+    doc = pipe.run(result.markdown)
 
     chroma_client = chromadb.PersistentClient(path="./chroma_db")
-    collection = chroma_client.get_or_create_collection(name="")
+    collection = chroma_client.get_or_create_collection(name="documents")
 
     embeddings_list = []
     ids_list = []

@@ -3,6 +3,7 @@ from typing import Annotated
 from dotenv import load_dotenv
 from services.parser import parser
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from services.ingest import ingest_doc
 
 from fastapi.middleware.cors import CORSMiddleware
 from nemoguardrails import LLMRails, RailsConfig
@@ -90,13 +91,15 @@ async def upload_document(
         "text/plain",
     }
     
-    if file.upload_type not in allowed_types:
+    if file.content_type not in allowed_types:
         raise HTTPException(status = 400, description = "File type is not allowed")
 
     # if not file.filename.lower().endswith(allowed_types):
     #     raise HTTPException(status_code = 400, detail="Invalid extension. Only PDF files allowed.")
     print(file.content_type)
-    parser(file)
+    text = parser(file)
+
+    ingest_doc(text)
 
 
     # if file.content_type not in allowed_types:
