@@ -1,8 +1,11 @@
 from pypdf import PdfReader
 
-def pdf_parser(file):
+def pdf_parser(file) -> str:
     reader = PdfReader(file.file)
     number_of_pages = len(reader.pages)
-    page = reader.pages[0]
-    text = page.extract_text()
-    print(text)
+
+    text : str = ""
+    for page in reader.pages:
+        text += page.extract_text()
+
+    return text
