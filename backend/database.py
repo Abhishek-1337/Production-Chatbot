@@ -10,6 +10,9 @@ load_dotenv()
 
 engine = create_async_engine(
     os.getenv("DATABASE_URL"),
+    connect_args={
+        "ssl": "require",
+    },
     echo=True,
 )
 

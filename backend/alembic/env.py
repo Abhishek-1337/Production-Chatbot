@@ -9,7 +9,8 @@ import sys
 sys.path.append(os.getcwd())  # so `app` package is importable
 
 from database import Base
-# from app.models import User  # import ALL your models here so Base.metadata sees them
+from models.user import User  
+from models.document import Document
 
 config = context.config
 
