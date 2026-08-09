@@ -6,49 +6,18 @@ import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models.user import User
+from schemas.auth import TokenData, CreateUserRequest
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-
-class TokenData(BaseModel):
-    user_id: str | None = None
-
-
-class UserResponse(BaseModel):
-    id: str
-    name: str
-    email: str
-    is_active: bool
-
-    class Config:
-        from_attributes = True
-
-
-class CreateUserRequest(BaseModel):
-    name: str
-    email: str
-    password: str
-
-
-class RegisterResponse(BaseModel):
-    user: UserResponse
-    access_token: str
-    token_type: str
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

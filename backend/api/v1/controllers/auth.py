@@ -1,17 +1,9 @@
-from typing import Annotated
-
 from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.auth import (
-    Token,
-    UserResponse,
-    CreateUserRequest,
-    authenticate_user,
-    create_access_token,
-    create_user,
-)
+from schemas.auth import Token, UserResponse, CreateUserRequest
+from services.auth import authenticate_user, create_access_token, create_user
 
 
 async def register_controller(
