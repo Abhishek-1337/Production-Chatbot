@@ -1,15 +1,20 @@
-from sqlalchemy import String, UUID
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+from sqlalchemy import String, UUID, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
-import uuid 
+import uuid
+
+if TYPE_CHECKING:
+    from models.document import Document
 
 
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        primary_key=True, 
+        UUID(as_uuid=True),
+        primary_key=True,
         default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(100))
@@ -21,6 +26,11 @@ class User(Base):
     password: Mapped[str] = mapped_column(
         String(255)
     )
-    documents: Mapped[list[str]] = relationship(
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    documents: Mapped[list["Document"]] = relationship(
         back_populates="user"
     )
