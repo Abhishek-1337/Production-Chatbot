@@ -32,5 +32,6 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc)
     )
     documents: Mapped[list["Document"]] = relationship(
+        "Document",
         back_populates="user"
     )

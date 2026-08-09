@@ -2,15 +2,17 @@ from pathlib import Path
 from typing import Annotated
 from dotenv import load_dotenv
 from services import parser, ingest, doc_retrieval
+from pydantic_ai import Agent
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from nemoguardrails import LLMRails, RailsConfig
 from pydantic import BaseModel, Field
 
-from api.v1.router import router as v1_router
-from api.v1.endpoints.users import User, get_current_user
-from pydantic_ai import Agent
-from dotenv import load_dotenv
+from api.v1 import api_router as v1_router
+from schemas.auth import UserResponse
+from services.auth import get_current_user
+import database
+import models
 
 load_dotenv()
 
@@ -35,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(v1_router)
+app.include_router(v1_router, prefix="/api/v1")
 
 GUARDRAILS_CONFIG_PATH = BACKEND_DIR / "config" / "guardrails_config"
 
@@ -43,7 +45,7 @@ GUARDRAILS_CONFIG_PATH = BACKEND_DIR / "config" / "guardrails_config"
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
 
-class Query(BaseModel): 
+class Query(BaseModel):
     query: str
 
 
@@ -65,7 +67,7 @@ async def health_check():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
-    _current_user: Annotated[User, Depends(get_current_user)],
+    _current_user: Annotated[UserResponse, Depends(get_current_user)],
 ):
     try:
         response = await app.state.rails.generate_async(
@@ -90,7 +92,7 @@ async def chat(
 
 
 @app.post("/query")
-def query_doc(data: Query):
+def query_doc(data: Query, _current_user: Annotated[UserResponse, Depends(get_current_user)]):
     context = doc_retrieval.retrieve_the_doc(data.query.strip())
     print(context)
     user_prompt = f"Document context:\n{context}\n\nQuestion: {data.query.strip()}"
@@ -100,10 +102,9 @@ def query_doc(data: Query):
     }
 
 
-
 @app.post("/upload")
 def upload_document(
-    # _current_user: Annotated[User, Depends(get_current_user)],
+    _current_user: Annotated[UserResponse, Depends(get_current_user)],
     file: UploadFile = File(...),
 ):
     try:
@@ -112,22 +113,20 @@ def upload_document(
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "text/plain",
-        } 
-        
+        }
+
         if file.content_type not in allowed_types:
-            raise HTTPException(status = 400, description = "File type is not allowed")
-    
+            raise HTTPException(status=400, detail="File type is not allowed")
+
         print(file.content_type)
         text = parser.parser(file)
-    
         ingest.ingest_doc(text)
 
         return {
-            "message": "Document is successfully upload. You can start querying the data."
+            "message": "Document is successfully uploaded. You can start querying the data."
         }
     except Exception as e:
         raise HTTPException(
-            status_code = 500,
+            status_code=500,
             detail="Something went wrong"
         )
-
