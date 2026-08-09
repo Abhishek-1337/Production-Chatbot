@@ -18,9 +18,9 @@ class User(Base):
         unique=True,
         index=True,
     )
-    password: Mapped[String] = mapped_column(
+    password: Mapped[str] = mapped_column(
         String(255)
     )
-    documents:Mapped[list[str]] = relationship(
+    documents: Mapped[list[str]] = relationship(
         back_populates="user"
     )
