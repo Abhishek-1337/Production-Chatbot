@@ -26,6 +26,11 @@ class CreateUserRequest(BaseModel):
     password: str
 
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
 class RegisterResponse(BaseModel):
     user: UserResponse
     access_token: str

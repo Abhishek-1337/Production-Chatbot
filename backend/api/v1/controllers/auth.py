@@ -1,8 +1,7 @@
 from fastapi import HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from schemas.auth import Token, UserResponse, CreateUserRequest
+from schemas.auth import Token, UserResponse, CreateUserRequest, LoginRequest
 from services.auth import authenticate_user, create_access_token, create_user
 
 
@@ -25,10 +24,10 @@ async def register_controller(
 
 
 async def login_controller(
-    form_data: OAuth2PasswordRequestForm,
+    credentials: LoginRequest,
     db: AsyncSession,
 ) -> Token:
-    user = await authenticate_user(db, form_data.username, form_data.password)
+    user = await authenticate_user(db, credentials.email, credentials.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
