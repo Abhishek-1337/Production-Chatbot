@@ -5,7 +5,7 @@ from schemas.document import Query
 from services.auth import get_current_user
 from api.v1.controllers.document import query_doc_controller, upload_document_controller
 
-router = APIRouter(prefix="/document", tags=["documents"])
+router = APIRouter(prefix="/document", tags=["document"])
 
 @router.post("/upload")
 async def upload_document(
