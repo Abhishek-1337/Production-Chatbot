@@ -1,16 +1,11 @@
 from typing import Annotated
-
-from fastapi import APIRouter, Depends, File, Request, UploadFile
-
+from fastapi import APIRouter, Depends, File, UploadFile
 from models.user import User
-from api.v1.controllers.document import upload_document_controller
+from schemas.document import Query
+from services.auth import get_current_user
+from api.v1.controllers.document import query_doc_controller, upload_document_controller
 
-router = APIRouter(prefix="/documents", tags=["documents"])
-
-
-async def get_current_user(request: Request) -> User:
-    return request.state.user
-
+router = APIRouter(prefix="/document", tags=["documents"])
 
 @router.post("/upload")
 async def upload_document(
@@ -18,3 +13,7 @@ async def upload_document(
     file: UploadFile = File(...),
 ):
     return await upload_document_controller(file, str(_current_user.id))
+
+@router.post("/query")
+def query_doc(data: Query, _current_user: Annotated[User, Depends(get_current_user)]):
+    return query_doc_controller(data, str(_current_user.id))

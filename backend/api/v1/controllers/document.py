@@ -1,7 +1,13 @@
 from fastapi import HTTPException, UploadFile
 
-from services import ingest, parser
+from services import doc_retrieval, ingest, parser
+from schemas.document import Query
+from pydantic_ai import Agent
 
+agent = Agent(
+  'openai-chat:gpt-4o-mini',
+  system_prompt="You are an expert internal company AI assistant. Your job is to answer user questions using ONLY the provided document context. If the context does not contain the answer, say 'I cannot find that in the documents.' Do not invent facts outside of the provided context.",
+)
 
 async def upload_document_controller(file: UploadFile, user_id: str) -> dict:
     allowed_types = {
@@ -18,3 +24,13 @@ async def upload_document_controller(file: UploadFile, user_id: str) -> dict:
     ingest.ingest_doc(text)
 
     return {"message": "Document is successfully uploaded. You can start querying the data."}
+
+
+def query_doc_controller(data: Query, user_id: str):
+    context = doc_retrieval.retrieve_the_doc(data.query.strip())
+    print(context)
+    user_prompt = f"Document context:\n{context}\n\nQuestion: {data.query.strip()}"
+    result = agent.run_sync(user_prompt)
+    return {
+        "result": result.output
+    }

@@ -1,9 +1,7 @@
 from pathlib import Path
 from typing import Annotated
 from dotenv import load_dotenv
-from services import parser, ingest, doc_retrieval
-from pydantic_ai import Agent
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from nemoguardrails import LLMRails, RailsConfig
 from pydantic import BaseModel, Field
@@ -11,15 +9,8 @@ from pydantic import BaseModel, Field
 from api.v1 import api_router as v1_router
 from schemas.auth import UserResponse
 from services.auth import get_current_user
-import database
-import models
 
 load_dotenv()
-
-agent = Agent(
-  'openai-chat:gpt-4o-mini',
-  system_prompt="You are an expert internal company AI assistant. Your job is to answer user questions using ONLY the provided document context. If the context does not contain the answer, say 'I cannot find that in the documents.' Do not invent facts outside of the provided context.",
-)
 
 BACKEND_DIR = Path(__file__).parent
 load_dotenv(BACKEND_DIR / ".env")
@@ -90,43 +81,3 @@ async def chat(
 
     return ChatResponse(response=content)
 
-
-@app.post("/query")
-def query_doc(data: Query, _current_user: Annotated[UserResponse, Depends(get_current_user)]):
-    context = doc_retrieval.retrieve_the_doc(data.query.strip())
-    print(context)
-    user_prompt = f"Document context:\n{context}\n\nQuestion: {data.query.strip()}"
-    result = agent.run_sync(user_prompt)
-    return {
-        "result": result.output
-    }
-
-
-@app.post("/upload")
-def upload_document(
-    _current_user: Annotated[UserResponse, Depends(get_current_user)],
-    file: UploadFile = File(...),
-):
-    try:
-        allowed_types = {
-            "application/pdf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "text/plain",
-        }
-
-        if file.content_type not in allowed_types:
-            raise HTTPException(status=400, detail="File type is not allowed")
-
-        print(file.content_type)
-        text = parser.parser(file)
-        ingest.ingest_doc(text)
-
-        return {
-            "message": "Document is successfully uploaded. You can start querying the data."
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail="Something went wrong"
-        )
