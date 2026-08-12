@@ -4,6 +4,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 import uuid
 # from models.user import User
+if TYPE_CHECKING:
+    from models.chat_message import ChatMessage
+
 
 if TYPE_CHECKING:
     from models.user import User
@@ -22,4 +25,8 @@ class Document(Base):
     user: Mapped["User"] = relationship(
         "User",
         back_populates = "documents"
+    )
+    chat_messages: Mapped[list["ChatMessage"]] = relationship(
+        "ChatMessage",
+        back_populates="user"
     )

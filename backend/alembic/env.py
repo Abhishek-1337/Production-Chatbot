@@ -11,6 +11,7 @@ sys.path.append(os.getcwd())  # so `app` package is importable
 from database import Base
 from models.user import User  
 from models.document import Document
+from models.chat_message import ChatMessage
 
 config = context.config
 
