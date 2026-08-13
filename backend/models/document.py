@@ -26,7 +26,4 @@ class Document(Base):
         "User",
         back_populates = "documents"
     )
-    chat_messages: Mapped[list["ChatMessage"]] = relationship(
-        "ChatMessage",
-        back_populates="user"
-    )
+

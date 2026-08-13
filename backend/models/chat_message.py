@@ -24,14 +24,6 @@ class ChatMessage(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id")
     )
-    user: Mapped["User"] = relationship(
-        "User",
-        back_populates="chat_messages"
-    )
-    document: Mapped["Document"] = relationship(
-        "Document",
-        back_populates="documents"
-    )
     role: Mapped[str] = mapped_column(
         String(20)
     )
