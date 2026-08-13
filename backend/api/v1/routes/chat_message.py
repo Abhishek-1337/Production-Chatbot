@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from database import get_db
+from models.chat_message import ChatMessage
 from models.document import Document
 from models.user import User
 from schemas.chat_message import ChatQuestion
@@ -37,8 +39,16 @@ async def chat_with_doc(
             detail="Document not found."
         )
 
+    db.add(ChatMessage(
+        document_id=uuid.UUID(data.document_id),
+        user_id=_current_user.id,
+        role="user",
+        content=data.query.strip(),
+    ))
+    await db.commit()
+
     return StreamingResponse(
-        chat_message_stream(data, str(_current_user.id)),
+        chat_message_stream(data, _current_user.id, db),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
