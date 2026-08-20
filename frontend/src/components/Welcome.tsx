@@ -8,8 +8,8 @@ export function Welcome({
   onUpload: () => void;
 }) {
   return (
-    <section className="welcome">
-      <div className="welcome-grid">
+    <section className="welcome flex min-h-0 flex-1 flex-col">
+      <div className="welcome-grid grid items-center">
         <div className="welcome-copy">
           <p className="eyebrow">YOUR DOCUMENTS, IN CONTEXT</p>
           <h1>

@@ -22,7 +22,7 @@ export function Composer({
   };
 
   return (
-    <form className="composer" onSubmit={onSubmit}>
+    <form className="composer relative mx-auto w-[84%] max-w-[750px]" onSubmit={onSubmit}>
       <textarea
         value={query}
         onChange={(event) => onChange(event.target.value)}

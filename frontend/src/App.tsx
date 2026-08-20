@@ -8,7 +8,11 @@ import { Sidebar } from "./components/Sidebar";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { Welcome } from "./components/Welcome";
 import type { Conversation, User } from "./types";
-import { errorMessage } from "./utils";
+import {
+  errorMessage,
+  getConversationIdFromUrl,
+  updateConversationUrl,
+} from "./utils";
 import "./App.css";
 
 const TOKEN_KEY = "rag-token";
@@ -45,6 +49,12 @@ function App() {
       .then(([me, chats]) => {
         setUser(me);
         setConversations(chats);
+        const conversationId = getConversationIdFromUrl();
+        const conversation = chats.find((item) => item.id === conversationId);
+        if (conversationId && conversation) {
+          return client.getConversation(conversation.id).then(setActive);
+        }
+        if (conversationId) updateConversationUrl(null, true);
       })
       .catch((err) => {
         localStorage.removeItem(TOKEN_KEY);
@@ -55,11 +65,35 @@ function App() {
       });
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    const handlePopState = () => {
+      const conversationId = getConversationIdFromUrl();
+      if (!conversationId) {
+        setActive(null);
+        return;
+      }
+
+      createApi(token)
+        .getConversation(conversationId)
+        .then(setActive)
+        .catch(() => {
+          updateConversationUrl(null, true);
+          setActive(null);
+          setError("Could not open conversation");
+        });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [token]);
+
   const selectConversation = async (conversation: Conversation) => {
     setError("");
     setSidebarOpen(false);
     try {
       setActive(await api.getConversation(conversation.id));
+      updateConversationUrl(conversation.id);
     } catch (err) {
       setError(errorMessage(err, "Could not open conversation"));
     }
@@ -72,6 +106,7 @@ function App() {
       const conversation = await api.upload(file);
       setConversations((items) => [conversation, ...items]);
       setActive(conversation);
+      updateConversationUrl(conversation.id);
       setSidebarOpen(false);
     } catch (err) {
       setError(errorMessage(err, "Upload failed"));
@@ -175,6 +210,7 @@ function App() {
     setUser(null);
     setConversations([]);
     setActive(null);
+    updateConversationUrl(null, true);
   };
 
   if (!token) {
@@ -194,7 +230,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell flex h-svh min-w-0 overflow-hidden">
       <Sidebar
         conversations={conversations}
         active={active}
@@ -206,8 +242,8 @@ function App() {
         onSelect={selectConversation}
         onSignOut={signOut}
       />
-      <main className="main-panel">
-        <header className="topbar">
+      <main className="main-panel flex min-w-0 flex-1 flex-col">
+        <header className="topbar flex items-center">
           <button
             className="icon-button menu-button"
             onClick={() => setSidebarOpen(true)}
@@ -234,9 +270,9 @@ function App() {
               isDark={isDark}
               onToggle={() => setIsDark((value) => !value)}
             />
-            <span className="live-label">
+            {/* <span className="live-label">
               <i /> SYSTEM READY
-            </span>
+            </span> */}
           </div>
         </header>
         {active ? (

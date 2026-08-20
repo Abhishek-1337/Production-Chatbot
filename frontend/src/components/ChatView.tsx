@@ -24,8 +24,8 @@ export function ChatView({
   const messages = active.messages ?? [];
 
   return (
-    <section className="chat-view">
-      <div className="chat-scroll">
+    <section className="chat-view flex min-h-0 flex-1 flex-col">
+      <div className="chat-scroll min-h-0 flex-1 overflow-auto">
         <div className="chat-intro">
           <div className="intro-symbol">
             <Icon name="book" size={24} />

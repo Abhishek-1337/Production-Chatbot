@@ -20,9 +20,9 @@ export function AuthScreen({
   onThemeToggle,
 }: AuthScreenProps) {
   return (
-    <main className="auth-screen">
+    <main className="auth-screen relative grid min-h-svh place-items-center">
       <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
-      <div className="auth-card">
+      <div className="auth-card w-[min(430px,calc(100%-40px))]">
         <div className="brand-mark">
           R<span>/</span>G
         </div>

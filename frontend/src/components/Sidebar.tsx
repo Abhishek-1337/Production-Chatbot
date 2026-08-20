@@ -26,7 +26,7 @@ export function Sidebar({
   onSignOut,
 }: SidebarProps) {
   return (
-    <aside className={`sidebar ${open ? "is-open" : ""}`}>
+    <aside className={`sidebar flex w-80 shrink-0 flex-col ${open ? "is-open" : ""}`}>
       <div className="sidebar-top">
         <div className="brand-mark">
           R<span>/</span>G
@@ -48,7 +48,7 @@ export function Sidebar({
           <Icon name="plus" /> New
         </button>
       </div>
-      <div className="conversation-list">
+      <div className="conversation-list flex-1 overflow-auto">
         {conversations.length === 0 ? (
           <div className="empty-sidebar">
             <Icon name="file" size={20} />
