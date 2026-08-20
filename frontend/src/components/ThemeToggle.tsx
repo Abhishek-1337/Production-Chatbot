@@ -8,7 +8,7 @@ type ThemeToggleProps = {
 export function ThemeToggle({ isDark, onToggle }: ThemeToggleProps) {
   return (
     <button
-      className="theme-toggle"
+      className="grid h-[34px] w-[34px] place-items-center border border-[var(--line)] bg-[var(--paper)] text-[var(--muted)] transition hover:border-[var(--amber)] hover:text-[var(--amber)]"
       type="button"
       onClick={onToggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}

@@ -22,7 +22,10 @@ export function Composer({
   };
 
   return (
-    <form className="composer relative mx-auto w-[84%] max-w-[750px]" onSubmit={onSubmit}>
+    <form
+      className="relative mx-auto mb-7 w-[calc(100%-34px)] max-w-[750px] sm:w-[84%]"
+      onSubmit={onSubmit}
+    >
       <textarea
         value={query}
         onChange={(event) => onChange(event.target.value)}
@@ -31,13 +34,15 @@ export function Composer({
         onKeyDown={handleKeyDown}
       />
       <button
-        className="send-button"
+        className="absolute right-2 top-2 grid h-10 w-10 place-items-center border-0 bg-[var(--amber)] text-white disabled:bg-[#d5ded8] dark:disabled:bg-[#3b4b4d]"
         type="submit"
         disabled={!query.trim() || loading}
       >
         <Icon name="send" />
       </button>
-      <small>ENTER TO SEND · SHIFT + ENTER FOR NEW LINE</small>
+      <small className="mt-2 block font-mono text-[9px] tracking-[1px] text-[#9ba5a3] dark:text-[#829391]">
+        ENTER TO SEND · SHIFT + ENTER FOR NEW LINE
+      </small>
     </form>
   );
 }

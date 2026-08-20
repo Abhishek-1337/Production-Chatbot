@@ -1,6 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap");
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme {
   --font-sans: "DM Sans", sans-serif;
   --font-mono: "DM Mono", monospace;
@@ -8,15 +10,27 @@
 }
 
 :root {
+  --ink: #15202b;
+  --muted: #7b8790;
+  --line: #dfe4e1;
+  --paper: #fbfcf9;
+  --navy: #182d3d;
+  --amber: #e6a13a;
   font-family: "DM Sans", sans-serif;
-  color: #15202b;
-  background: #f5f6f2;
+  color: var(--ink);
+  background: var(--paper);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   color-scheme: light;
 }
 [data-theme="dark"] {
+  --ink: #e6ece9;
+  --muted: #9eaaa8;
+  --line: #304047;
+  --paper: #101a20;
+  --navy: #d8e4e1;
+  --amber: #efb34f;
   color-scheme: dark;
 }
 * {
@@ -25,6 +39,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  background: var(--paper);
   transition: background-color 0.25s ease;
 }
 button,
@@ -34,4 +49,17 @@ textarea {
 }
 button {
   cursor: pointer;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.25;
+    transform: translateY(-2px);
+  }
 }

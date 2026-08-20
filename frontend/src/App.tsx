@@ -13,7 +13,6 @@ import {
   getConversationIdFromUrl,
   updateConversationUrl,
 } from "./utils";
-import "./App.css";
 
 const TOKEN_KEY = "rag-token";
 const THEME_KEY = "rag-theme";
@@ -230,7 +229,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell flex h-svh min-w-0 overflow-hidden">
+    <div className="flex h-svh min-w-0 overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
       <Sidebar
         conversations={conversations}
         active={active}
@@ -242,30 +241,32 @@ function App() {
         onSelect={selectConversation}
         onSignOut={signOut}
       />
-      <main className="main-panel flex min-w-0 flex-1 flex-col">
-        <header className="topbar flex items-center">
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-[77px] items-center gap-4 border-b border-[var(--line)] px-[18px] sm:px-[42px]">
           <button
-            className="icon-button menu-button"
+            className="grid place-items-center border-0 bg-transparent p-2 text-[var(--muted)] md:hidden"
             onClick={() => setSidebarOpen(true)}
             aria-label="Open sidebar"
           >
             <Icon name="menu" />
           </button>
           {active ? (
-            <div className="document-heading">
-              <span className="status-dot" />
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-[#7eb587] shadow-[0_0_0_4px_#e7f1e7]" />
               <div>
-                <strong>{active.title}</strong>
-                <small>
+                <strong className="block text-sm">{active.title}</strong>
+                <small className="mt-0.5 flex items-center gap-1 text-[11px] text-[var(--muted)]">
                   <Icon name="file" size={12} />{" "}
                   {active.document_name ?? "Source document"}
                 </small>
               </div>
             </div>
           ) : (
-            <div className="topbar-label">RAG / RESEARCH DESK</div>
+            <div className="font-mono text-[10px] font-medium tracking-[1.5px] text-[var(--muted)] max-sm:hidden">
+              RAG / RESEARCH DESK
+            </div>
           )}
-          <div className="topbar-right">
+          <div className="ml-auto">
             <ThemeToggle
               isDark={isDark}
               onToggle={() => setIsDark((value) => !value)}
