@@ -13,7 +13,7 @@ async def register_controller(
     access_token = create_access_token(data={"sub": str(user.id)})
     return {
         "user": UserResponse(
-            id=str(user.id),
+            id=user.id,
             name=user.name,
             email=user.email,
             is_active=user.is_active,

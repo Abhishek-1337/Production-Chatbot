@@ -40,7 +40,11 @@ function App() {
     if (!token) return
     Promise.all([request('/auth/me'), request('/conversations')]).then(async ([me, chats]) => {
       setUser(await me.json()); setConversations(await chats.json())
-    }).catch(() => { localStorage.removeItem('rag-token'); setToken('') })
+    }).catch((err) => {
+      localStorage.removeItem('rag-token')
+      setToken('')
+      setError(err instanceof Error ? err.message : 'Your session has expired. Please sign in again.')
+    })
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openConversation = async (conversation: Conversation) => {

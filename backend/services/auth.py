@@ -1,8 +1,11 @@
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated
 
 import bcrypt
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -12,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models.user import User
 from schemas.auth import TokenData, CreateUserRequest
+
+# This module is imported before main.py can load the backend-local env file.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
 ALGORITHM = "HS256"
@@ -54,11 +60,12 @@ async def get_current_user(
         user_id: str | None = payload.get("sub")
         if user_id is None:
             raise credentials_exception
+        user_uuid = uuid.UUID(user_id)
         token_data = TokenData(user_id=user_id)
-    except JWTError as exc:
+    except (JWTError, ValueError) as exc:
         raise credentials_exception from exc
 
-    result = await db.execute(select(User).where(User.id == token_data.user_id))
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
