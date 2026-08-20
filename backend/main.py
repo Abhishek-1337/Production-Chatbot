@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Annotated
+import os
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +17,11 @@ BACKEND_DIR = Path(__file__).parent
 load_dotenv(BACKEND_DIR / ".env")
 
 origins = [
-    "http://localhost:3000",
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
+    ).split(",")
+    if origin.strip()
 ]
 
 app = FastAPI()
@@ -80,4 +85,3 @@ async def chat(
         content = response
 
     return ChatResponse(response=content)
-
