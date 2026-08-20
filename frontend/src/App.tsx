@@ -242,7 +242,7 @@ function App() {
         onSignOut={signOut}
       />
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[77px] items-center gap-4 border-b border-[var(--line)] px-[18px] sm:px-[42px]">
+        <header className="flex items-center gap-4 border-b border-[var(--line)] px-[18px] sm:px-[42px] pb-3 pt-5">
           <button
             className="grid place-items-center border-0 bg-transparent p-2 text-[var(--muted)] md:hidden"
             onClick={() => setSidebarOpen(true)}

@@ -27,6 +27,7 @@ export function Composer({
       onSubmit={onSubmit}
     >
       <textarea
+        className="block min-h-[58px] w-full resize-none rounded-none border border-[#cfd8d2] bg-white px-[18px] py-[17px] pr-[60px] text-sm leading-normal text-[var(--ink)] shadow-[0_5px_16px_rgba(22,43,53,0.04)] outline-none placeholder:text-[#9ba5a3] focus:border-[#99aa9e] dark:border-[#405158] dark:bg-[#1a2930] dark:placeholder:text-[#80918f]"
         value={query}
         onChange={(event) => onChange(event.target.value)}
         placeholder="Ask a question about your document..."
