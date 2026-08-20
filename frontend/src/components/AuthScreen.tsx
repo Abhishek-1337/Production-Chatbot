@@ -1,11 +1,14 @@
 import type { FormEvent } from "react";
 import { Icon } from "./Icon";
+import { ThemeToggle } from "./ThemeToggle";
 
 type AuthScreenProps = {
   mode: "login" | "register";
   error: string;
   onModeChange: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  isDark: boolean;
+  onThemeToggle: () => void;
 };
 
 export function AuthScreen({
@@ -13,9 +16,12 @@ export function AuthScreen({
   error,
   onModeChange,
   onSubmit,
+  isDark,
+  onThemeToggle,
 }: AuthScreenProps) {
   return (
     <main className="auth-screen">
+      <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
       <div className="auth-card">
         <div className="brand-mark">
           R<span>/</span>G

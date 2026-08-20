@@ -5,12 +5,14 @@ import { AuthScreen } from "./components/AuthScreen";
 import { ChatView } from "./components/ChatView";
 import { Icon } from "./components/Icon";
 import { Sidebar } from "./components/Sidebar";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { Welcome } from "./components/Welcome";
 import type { Conversation, User } from "./types";
 import { errorMessage } from "./utils";
 import "./App.css";
 
 const TOKEN_KEY = "rag-token";
+const THEME_KEY = "rag-theme";
 
 function App() {
   const [token, setToken] = useState(
@@ -25,8 +27,16 @@ function App() {
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [isDark, setIsDark] = useState(
+    () => localStorage.getItem(THEME_KEY) === "dark",
+  );
   const fileInput = useRef<HTMLInputElement>(null);
   const api = createApi(token);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = isDark ? "dark" : "light";
+    localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
+  }, [isDark]);
 
   useEffect(() => {
     if (!token) return;
@@ -177,6 +187,8 @@ function App() {
           setError("");
         }}
         onSubmit={submitAuth}
+        isDark={isDark}
+        onThemeToggle={() => setIsDark((value) => !value)}
       />
     );
   }
@@ -218,6 +230,10 @@ function App() {
             <div className="topbar-label">RAG / RESEARCH DESK</div>
           )}
           <div className="topbar-right">
+            <ThemeToggle
+              isDark={isDark}
+              onToggle={() => setIsDark((value) => !value)}
+            />
             <span className="live-label">
               <i /> SYSTEM READY
             </span>

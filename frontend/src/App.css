@@ -641,3 +641,183 @@
     font-size: 14px;
   }
 }
+
+.theme-toggle {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--muted);
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  transition:
+    color 0.2s,
+    background 0.2s,
+    border-color 0.2s;
+}
+.theme-toggle:hover {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.theme-toggle:focus-visible,
+.icon-button:focus-visible,
+.text-button:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+.auth-screen > .theme-toggle {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  background: #203b4c;
+  border-color: #496477;
+  color: #d5e1e4;
+}
+.auth-screen > .theme-toggle:hover {
+  background: #294b60;
+  color: var(--amber);
+}
+
+[data-theme="dark"] {
+  --ink: #e6ece9;
+  --muted: #9eaaa8;
+  --line: #304047;
+  --paper: #101a20;
+  --navy: #d8e4e1;
+  --amber: #efb34f;
+}
+[data-theme="dark"] body {
+  background: #101a20;
+}
+[data-theme="dark"] .sidebar {
+  background: #17242b;
+  border-color: var(--line);
+}
+[data-theme="dark"] .new-button,
+[data-theme="dark"] .primary-button {
+  background: #d8e4e1;
+  color: #15242b;
+}
+[data-theme="dark"] .new-button:hover,
+[data-theme="dark"] .primary-button:hover {
+  background: #f0f6f2;
+}
+[data-theme="dark"] .conversation-item {
+  color: var(--ink);
+}
+[data-theme="dark"] .conversation-item:hover,
+[data-theme="dark"] .conversation-item.active {
+  background: #22343c;
+}
+[data-theme="dark"] .conversation-icon {
+  background: #1d2c33;
+  border-color: #3a4b51;
+  color: #a3b2b0;
+}
+[data-theme="dark"] .conversation-meta small,
+[data-theme="dark"] .user-chip small,
+[data-theme="dark"] .document-heading small {
+  color: #9eaaa8;
+}
+[data-theme="dark"] .empty-sidebar {
+  color: #8b9a99;
+}
+[data-theme="dark"] .empty-sidebar p {
+  color: #b7c2bf;
+}
+[data-theme="dark"] .topbar {
+  border-color: var(--line);
+}
+[data-theme="dark"] .document-heading strong,
+[data-theme="dark"] .sidebar h2 {
+  color: var(--ink);
+}
+[data-theme="dark"] .live-label,
+[data-theme="dark"] .topbar-label,
+[data-theme="dark"] .eyebrow,
+[data-theme="dark"] .message-label {
+  color: #9eaaa8;
+}
+[data-theme="dark"] .welcome h1,
+[data-theme="dark"] .chat-intro h1,
+[data-theme="dark"] .auth-card h1 {
+  color: #e6ece9;
+}
+[data-theme="dark"] .welcome-copy > p:not(.eyebrow),
+[data-theme="dark"] .chat-intro > p:last-child {
+  color: #aab8b5;
+}
+[data-theme="dark"] .blueprint-ring,
+[data-theme="dark"] .blueprint-ring:after {
+  border-color: #35484d;
+}
+[data-theme="dark"] .blueprint-card {
+  background: #d8e4e1;
+  color: #15242b;
+  box-shadow: 18px 20px 0 #263941;
+}
+[data-theme="dark"] .blueprint-card span,
+[data-theme="dark"] .blueprint-card small {
+  color: #587074;
+}
+[data-theme="dark"] .blueprint-line {
+  background: #35484d;
+}
+[data-theme="dark"] .principles {
+  border-color: var(--line);
+  color: #9eaaa8;
+}
+[data-theme="dark"] .message-body {
+  color: #d0dcda;
+}
+[data-theme="dark"] .message.user .message-body {
+  background: #243b3d;
+  color: #d9e8df;
+}
+[data-theme="dark"] .composer textarea {
+  border-color: #405158;
+  background: #1a2930;
+  color: var(--ink);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.16);
+}
+[data-theme="dark"] .composer textarea::placeholder {
+  color: #80918f;
+}
+[data-theme="dark"] .composer small {
+  color: #829391;
+}
+[data-theme="dark"] .send-button:disabled {
+  background: #3b4b4d;
+}
+[data-theme="dark"] .auth-screen {
+  background: #0d171d;
+}
+[data-theme="dark"] .auth-card {
+  background: #17252c;
+  color: var(--ink);
+  box-shadow: 20px 20px 0 #091117;
+}
+[data-theme="dark"] .auth-card .brand-mark {
+  color: #d8e4e1;
+}
+[data-theme="dark"] .auth-copy,
+[data-theme="dark"] .auth-form label {
+  color: #aab8b5;
+}
+[data-theme="dark"] .auth-form input {
+  border-color: #405158;
+  background: #1d2d34;
+  color: var(--ink);
+}
+[data-theme="dark"] .auth-form input::placeholder {
+  color: #80918f;
+}
+[data-theme="dark"] .text-button {
+  color: #aab8b5;
+}
+[data-theme="dark"] .auth-note {
+  color: #91a5a8;
+}
