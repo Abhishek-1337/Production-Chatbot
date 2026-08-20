@@ -8,6 +8,7 @@ import uuid
 if TYPE_CHECKING:
     from models.user import User
     from models.document import Document
+    from models.conversation import Conversation
 
 
 class ChatMessage(Base):
@@ -21,8 +22,8 @@ class ChatMessage(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("documents.id")
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id")
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id"), index=True
     )
     role: Mapped[str] = mapped_column(
         String(20)
@@ -34,3 +35,4 @@ class ChatMessage(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)
     )
+    conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")

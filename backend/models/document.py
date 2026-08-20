@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 if TYPE_CHECKING:
     from models.user import User
+    from models.conversation import Conversation
 
 class Document(Base):
     __tablename__ = "documents"
@@ -22,8 +23,11 @@ class Document(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id")
     )
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     user: Mapped["User"] = relationship(
         "User",
         back_populates = "documents"
     )
-
+    conversations: Mapped[list["Conversation"]] = relationship(
+        "Conversation", back_populates="document"
+    )

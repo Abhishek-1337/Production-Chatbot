@@ -8,6 +8,7 @@ import uuid
 if TYPE_CHECKING:
     from models.document import Document
     from models.chat_message import ChatMessage
+    from models.conversation import Conversation
 
 
 class User(Base):
@@ -35,4 +36,7 @@ class User(Base):
     documents: Mapped[list["Document"]] = relationship(
         "Document",
         back_populates="user"
+    )
+    conversations: Mapped[list["Conversation"]] = relationship(
+        "Conversation", back_populates="user", cascade="all, delete-orphan"
     )
