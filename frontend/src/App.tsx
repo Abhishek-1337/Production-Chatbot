@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { authenticate, createApi, readAssistantStream } from "./api";
+import { ApiError, authenticate, createApi, readAssistantStream } from "./api";
 import { AuthScreen } from "./components/AuthScreen";
 import { ChatView } from "./components/ChatView";
 import { Icon } from "./components/Icon";
@@ -51,16 +51,25 @@ function App() {
         const conversationId = getConversationIdFromUrl();
         const conversation = chats.find((item) => item.id === conversationId);
         if (conversationId && conversation) {
-          return client.getConversation(conversation.id).then(setActive);
+          client
+            .getConversation(conversation.id)
+            .then(setActive)
+            .catch((err) => {
+              updateConversationUrl(null, true);
+              setError(errorMessage(err, "Could not open conversation"));
+            });
+        } else if (conversationId) {
+          updateConversationUrl(null, true);
         }
-        if (conversationId) updateConversationUrl(null, true);
       })
       .catch((err) => {
-        localStorage.removeItem(TOKEN_KEY);
-        setToken("");
-        setError(
-          errorMessage(err, "Your session has expired. Please sign in again."),
-        );
+        if (err instanceof ApiError && err.status === 401) {
+          localStorage.removeItem(TOKEN_KEY);
+          setToken("");
+          setError("Your session has expired. Please sign in again.");
+          return;
+        }
+        setError(errorMessage(err, "Could not load your workspace"));
       });
   }, [token]);
 
@@ -114,11 +123,9 @@ function App() {
     }
   };
 
-  const send = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!query.trim() || !active || loading) return;
+  const sendQuestion = async (text: string) => {
+    if (!text || !active || loading) return;
 
-    const text = query.trim();
     const conversationId = active.id;
     const answerId = `answer-${Date.now()}`;
     setQuery("");
@@ -175,6 +182,9 @@ function App() {
             : current,
         );
       });
+      if (!assistant.trim()) {
+        throw new Error("The assistant returned an empty answer.");
+      }
       setConversations((items) =>
         items.map((item) =>
           item.id === conversationId
@@ -184,9 +194,35 @@ function App() {
       );
     } catch (err) {
       setError(errorMessage(err, "Message failed"));
+      setActive((current) => {
+        if (!current) return current;
+        const messages = current.messages ?? [];
+        const hasAnswer = messages.some((message) => message.id === answerId);
+        const failedAnswer = {
+          id: answerId,
+          role: "assistant" as const,
+          content: "I couldn't answer that question.",
+          created_at: new Date().toISOString(),
+          status: "failed" as const,
+        };
+
+        return {
+          ...current,
+          messages: hasAnswer
+            ? messages.map((message) =>
+                message.id === answerId ? failedAnswer : message,
+              )
+            : [...messages, failedAnswer],
+        };
+      });
     } finally {
       setLoading(false);
     }
+  };
+
+  const send = (event: FormEvent) => {
+    event.preventDefault();
+    void sendQuestion(query.trim());
   };
 
   const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
@@ -284,6 +320,7 @@ function App() {
             error={error}
             onQueryChange={setQuery}
             onSubmit={send}
+            onRetry={(text) => void sendQuestion(text)}
           />
         ) : (
           <Welcome

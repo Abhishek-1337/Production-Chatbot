@@ -5,6 +5,7 @@ export type Message = {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  status?: "failed";
 };
 
 export type Conversation = {

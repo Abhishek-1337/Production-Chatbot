@@ -11,6 +11,7 @@ type ChatViewProps = {
   error: string;
   onQueryChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
+  onRetry: (query: string) => void;
 };
 
 export function ChatView({
@@ -20,6 +21,7 @@ export function ChatView({
   error,
   onQueryChange,
   onSubmit,
+  onRetry,
 }: ChatViewProps) {
   const messages = active.messages ?? [];
 
@@ -41,7 +43,7 @@ export function ChatView({
             contents only.
           </p>
         </div>
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <article
             key={message.id}
             className={`mb-7 max-w-[680px] ${message.role === "user" ? "ml-auto text-right" : ""}`}
@@ -54,7 +56,22 @@ export function ChatView({
             <div
               className={`inline-block whitespace-pre-wrap text-left text-[15px] leading-relaxed ${message.role === "user" ? "bg-[#e9eee9] px-4 py-3 text-[#33443e] dark:bg-[#243b3d] dark:text-[#d9e8df]" : "max-w-[640px] text-[#314149] dark:text-[#d0dcda]"}`}
             >
-              {message.content || (loading && <Typing />)}
+              {message.status === "failed" ? (
+                <div className="flex flex-col items-start gap-3">
+                  <span>{message.content}</span>
+                  {messages[index - 1]?.role === "user" && (
+                    <button
+                      className="inline-flex items-center gap-2 border border-[#b34e3e] bg-transparent px-3 py-2 text-xs font-semibold text-[#b34e3e] transition hover:bg-[#b34e3e] hover:text-white"
+                      type="button"
+                      onClick={() => onRetry(messages[index - 1].content)}
+                    >
+                      Retry question
+                    </button>
+                  )}
+                </div>
+              ) : (
+                message.content || (loading && <Typing />)
+              )}
             </div>
           </article>
         ))}

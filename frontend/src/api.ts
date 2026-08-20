@@ -109,6 +109,9 @@ export async function readAssistantStream(
       if (!line.startsWith("data: ")) continue;
       const event = JSON.parse(line.slice(6));
       if (event.event === "token") onToken(event.content);
+      if (event.event === "error") {
+        throw new Error(event.content ?? "The assistant could not answer.");
+      }
     }
   }
 }
