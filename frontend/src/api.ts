@@ -40,8 +40,12 @@ export function createApi(token: string) {
     async getUser() {
       return (await request("/auth/me")).json() as Promise<User>;
     },
-    async getConversations() {
-      return (await request("/conversations")).json() as Promise<
+    async getConversations(limit = 20, offset = 0) {
+      const qs = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      });
+      return (await request(`/conversations?${qs}`)).json() as Promise<
         Conversation[]
       >;
     },
@@ -50,12 +54,33 @@ export function createApi(token: string) {
         await request(`/conversations/${id}`)
       ).json() as Promise<Conversation>;
     },
+    async getMessages(
+      conversationId: string,
+      limit = 50,
+      before?: string | null,
+    ) {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (before) qs.set("before", before);
+      return (
+        await request(`/conversations/${encodeURIComponent(conversationId)}/messages?${qs}`)
+      ).json() as Promise<{
+        messages: import("./types").Message[];
+        next_cursor: string | null;
+        has_more: boolean;
+        total: number | null;
+      }>;
+    },
     async upload(file: File) {
       const form = new FormData();
       form.append("file", file);
       return (
         await request("/conversations/upload", { method: "POST", body: form })
       ).json() as Promise<Conversation>;
+    },
+    async deleteConversation(id: string) {
+      await request(`/conversations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
     },
     sendMessage(query: string, conversationId: string) {
       return request("/chat/", {

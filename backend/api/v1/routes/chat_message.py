@@ -12,6 +12,7 @@ from models.user import User
 from schemas.chat_message import ChatQuestion
 from services.auth import get_current_user
 from api.v1.controllers.chat_message import chat_message_stream
+from services.input_guardrails import GuardrailViolation, sanitize_query
 
 router = APIRouter(
     prefix="/chat",
@@ -24,6 +25,11 @@ async def chat_with_doc(
     _current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
+    try:
+        data.query = sanitize_query(data.query).value
+    except GuardrailViolation as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+
     if not data.conversation_id:
         raise HTTPException(
             status_code=401,
@@ -49,7 +55,11 @@ async def chat_with_doc(
     await db.commit()
 
     return StreamingResponse(
-        chat_message_stream(data, _current_user.id, db),
+        chat_message_stream(
+            data,
+            _current_user.id,
+            db,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

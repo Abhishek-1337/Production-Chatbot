@@ -15,5 +15,13 @@ export type Conversation = {
   document_name?: string | null;
   created_at: string;
   updated_at: string;
-  messages?: Message[];
+  messages?: Message[] | null;
+  total_messages?: number | null;
+};
+
+export type PaginatedMessages = {
+  messages: Message[];
+  next_cursor: string | null;
+  has_more: boolean;
+  total: number | null;
 };

@@ -24,12 +24,20 @@ export function Welcome({
             answer tethered to the source.
           </p>
           <button
-            className="mt-7 inline-flex items-center justify-center gap-2 border-0 bg-[var(--navy)] px-[18px] py-3.5 text-[13px] font-semibold text-white transition hover:-translate-y-px hover:bg-[#24475d] dark:bg-[#d8e4e1] dark:text-[#15242b] dark:hover:bg-[#f0f6f2]"
+            className="mt-7 inline-flex items-center justify-center gap-2 border-0 bg-[var(--navy)] px-[18px] py-3.5 text-[13px] font-semibold text-white transition hover:-translate-y-px hover:bg-[#24475d] disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#d8e4e1] dark:text-[#15242b] dark:hover:bg-[#f0f6f2]"
             onClick={onUpload}
             disabled={uploading}
           >
-            {uploading ? "Indexing document..." : "Upload a document"}{" "}
-            <Icon name="upload" />
+            {uploading ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white dark:border-[#15242b]/20 dark:border-t-[#15242b]" />
+                Indexing document…
+              </>
+            ) : (
+              <>
+                Upload a document <Icon name="upload" />
+              </>
+            )}
           </button>
         </div>
         <div className="relative hidden h-[350px] place-items-center md:grid">

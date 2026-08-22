@@ -1,7 +1,10 @@
+from pathlib import Path
 from io import BytesIO
 from markitdown import MarkItDown
 from chonkie import Pipeline
 import chromadb
+
+_CHROMA_PATH = str(Path(__file__).resolve().parent.parent / "chroma_db")
 
 
 def ingest_doc(data, document_id, user_id): 
@@ -20,7 +23,7 @@ def ingest_doc(data, document_id, user_id):
     
         doc = pipe.run(result.markdown)
     
-        chroma_client = chromadb.PersistentClient(path="./chroma_db")
+        chroma_client = chromadb.PersistentClient(path=_CHROMA_PATH)
         collection = chroma_client.get_or_create_collection(name="documents")
     
         embeddings_list = []

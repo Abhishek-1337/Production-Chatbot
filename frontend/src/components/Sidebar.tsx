@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { Conversation, User } from "../types";
 import { formatDate } from "../utils";
 import { Icon } from "./Icon";
@@ -8,11 +9,111 @@ type SidebarProps = {
   user: User | null;
   open: boolean;
   uploading: boolean;
+  deletingId: string | null;
   onClose: () => void;
   onNew: () => void;
   onSelect: (conversation: Conversation) => void;
+  onDelete: (conversation: Conversation) => void;
   onSignOut: () => void;
 };
+
+function ConversationCard({
+  conversation,
+  isActive,
+  isDeleting,
+  onSelect,
+  onDelete,
+}: {
+  conversation: Conversation;
+  isActive: boolean;
+  isDeleting: boolean;
+  onSelect: (conversation: Conversation) => void;
+  onDelete: (conversation: Conversation) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
+
+  return (
+    <div
+      className={`group relative flex w-full gap-3 border-l-2 px-3 py-3 transition hover:bg-[#e4e9e4] dark:hover:bg-[#22343c] ${isActive ? "border-l-[var(--amber)] bg-[#e4e9e4] dark:bg-[#22343c]" : "border-l-transparent"}`}
+    >
+      <button
+        className="flex min-w-0 flex-1 gap-3 border-0 bg-transparent p-0 text-left text-[var(--ink)]"
+        onClick={() => onSelect(conversation)}
+      >
+        <span className="grid h-7 w-7 shrink-0 place-items-center border border-[var(--line)] bg-[#f7f8f5] text-[#7c898c] dark:bg-[#1d2c33] dark:text-[#a3b2b0]">
+          <Icon name="file" size={16} />
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">
+          <strong className="truncate text-[13px] font-semibold">
+            {conversation.title}
+          </strong>
+          <small className="truncate text-[11px] text-[#899398] dark:text-[#9eaaa8]">
+            {conversation.document_name ?? "Document"} ·{" "}
+            {formatDate(conversation.updated_at)}
+          </small>
+        </span>
+      </button>
+
+      <div className="relative shrink-0" ref={menuRef}>
+        <button
+          className={`grid place-items-center border-0 bg-transparent p-1.5 text-[var(--muted)] opacity-0 transition hover:text-[var(--ink)] focus-visible:opacity-100 group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            setMenuOpen((value) => !value);
+          }}
+          aria-label={`Options for ${conversation.title}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          {/* three vertical dots */}
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="5" r="2" />
+            <circle cx="12" cy="12" r="2" />
+            <circle cx="12" cy="19" r="2" />
+          </svg>
+        </button>
+        {menuOpen && (
+          <div
+            role="menu"
+            className="absolute right-0 top-full z-20 mt-1 w-44 border border-[var(--line)] bg-white py-1 shadow-lg dark:bg-[#1b2a31]"
+          >
+            {isDeleting ? (
+              <span className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--muted)]">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+                Deleting...
+              </span>
+            ) : (
+              <button
+                role="menuitem"
+                className="flex w-full items-center gap-2 border-0 bg-transparent px-3 py-2 text-left text-xs font-medium text-[#b34e3e] transition hover:bg-[#fbeeed] dark:hover:bg-[#33262a]"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMenuOpen(false);
+                  onDelete(conversation);
+                }}
+              >
+                <Icon name="trash" size={14} />
+                Delete conversation
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function Sidebar({
   conversations,
@@ -20,9 +121,11 @@ export function Sidebar({
   user,
   open,
   uploading,
+  deletingId,
   onClose,
   onNew,
   onSelect,
+  onDelete,
   onSignOut,
 }: SidebarProps) {
   return (
@@ -55,7 +158,16 @@ export function Sidebar({
           onClick={onNew}
           disabled={uploading}
         >
-          <Icon name="plus" /> New
+          {uploading ? (
+            <>
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white dark:border-[#15242b]/20 dark:border-t-[#15242b]" />
+              Indexing…
+            </>
+          ) : (
+            <>
+              <Icon name="plus" /> New
+            </>
+          )}
         </button>
       </div>
       <div className="flex-1 overflow-auto px-3 py-1">
@@ -69,24 +181,14 @@ export function Sidebar({
           </div>
         ) : (
           conversations.map((conversation) => (
-            <button
+            <ConversationCard
               key={conversation.id}
-              className={`group flex w-full gap-3 border-0 border-l-2 bg-transparent px-3 py-3 text-left text-[var(--ink)] transition hover:bg-[#e4e9e4] dark:hover:bg-[#22343c] ${active?.id === conversation.id ? "border-l-[var(--amber)] bg-[#e4e9e4] dark:bg-[#22343c]" : "border-l-transparent"}`}
-              onClick={() => onSelect(conversation)}
-            >
-              <span className="grid h-7 w-7 shrink-0 place-items-center border border-[var(--line)] bg-[#f7f8f5] text-[#7c898c] dark:bg-[#1d2c33] dark:text-[#a3b2b0]">
-                <Icon name="file" size={16} />
-              </span>
-              <span className="flex min-w-0 flex-col gap-1">
-                <strong className="truncate text-[13px] font-semibold">
-                  {conversation.title}
-                </strong>
-                <small className="truncate text-[11px] text-[#899398] dark:text-[#9eaaa8]">
-                  {conversation.document_name ?? "Document"} ·{" "}
-                  {formatDate(conversation.updated_at)}
-                </small>
-              </span>
-            </button>
+              conversation={conversation}
+              isActive={active?.id === conversation.id}
+              isDeleting={deletingId === conversation.id}
+              onSelect={onSelect}
+              onDelete={onDelete}
+            />
           ))
         )}
       </div>

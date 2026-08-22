@@ -6,6 +6,8 @@ import { ChatView } from "./components/ChatView";
 import { Icon } from "./components/Icon";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { ToastContainer, type ToastItem } from "./components/Toast";
+import { UploadOverlay } from "./components/UploadOverlay";
 import { Welcome } from "./components/Welcome";
 import type { Conversation, User } from "./types";
 import {
@@ -36,28 +38,72 @@ function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const api = createApi(token);
 
+  // Pagination for active conversation messages (keyset)
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [uploadFileName, setUploadFileName] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const dismissToast = (id: number) =>
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+
+  const showToast = (
+    message: string,
+    type: ToastItem["type"] = "info",
+    durationMs?: number,
+  ) => {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    if (type !== "loading") {
+      const ms = durationMs ?? (type === "error" ? 4500 : 3200);
+      setTimeout(() => dismissToast(id), ms);
+    }
+    return id;
+  };
+
   useEffect(() => {
     document.documentElement.dataset.theme = isDark ? "dark" : "light";
     localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
   }, [isDark]);
 
+  // Helper to load conversation metadata + first page of messages
+  const loadConversationWithMessages = async (
+    client: ReturnType<typeof createApi>,
+    conversationId: string,
+  ) => {
+    const convo = await client.getConversation(conversationId);
+    try {
+      const page = await client.getMessages(conversationId, 50);
+      setHasMore(page.has_more);
+      setNextCursor(page.next_cursor);
+      return { ...convo, messages: page.messages } as Conversation;
+    } catch {
+      // Fallback: show conversation even if messages fail
+      setHasMore(false);
+      setNextCursor(null);
+      return { ...convo, messages: [] } as Conversation;
+    }
+  };
+
   useEffect(() => {
     if (!token) return;
     const client = createApi(token);
     Promise.all([client.getUser(), client.getConversations()])
-      .then(([me, chats]) => {
+      .then(async ([me, chats]) => {
         setUser(me);
         setConversations(chats);
         const conversationId = getConversationIdFromUrl();
         const conversation = chats.find((item) => item.id === conversationId);
         if (conversationId && conversation) {
-          client
-            .getConversation(conversation.id)
-            .then(setActive)
-            .catch((err) => {
-              updateConversationUrl(null, true);
-              setError(errorMessage(err, "Could not open conversation"));
-            });
+          try {
+            const full = await loadConversationWithMessages(client, conversation.id);
+            setActive(full);
+          } catch (err) {
+            updateConversationUrl(null, true);
+            setError(errorMessage(err, "Could not open conversation"));
+          }
         } else if (conversationId) {
           updateConversationUrl(null, true);
         }
@@ -75,21 +121,24 @@ function App() {
 
   useEffect(() => {
     if (!token) return;
-    const handlePopState = () => {
+    const handlePopState = async () => {
       const conversationId = getConversationIdFromUrl();
       if (!conversationId) {
         setActive(null);
+        setHasMore(false);
+        setNextCursor(null);
         return;
       }
 
-      createApi(token)
-        .getConversation(conversationId)
-        .then(setActive)
-        .catch(() => {
-          updateConversationUrl(null, true);
-          setActive(null);
-          setError("Could not open conversation");
-        });
+      try {
+        const client = createApi(token);
+        const full = await loadConversationWithMessages(client, conversationId);
+        setActive(full);
+      } catch {
+        updateConversationUrl(null, true);
+        setActive(null);
+        setError("Could not open conversation");
+      }
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -99,27 +148,95 @@ function App() {
   const selectConversation = async (conversation: Conversation) => {
     setError("");
     setSidebarOpen(false);
+    setHasMore(false);
+    setNextCursor(null);
     try {
-      setActive(await api.getConversation(conversation.id));
+      const full = await loadConversationWithMessages(api, conversation.id);
+      setActive(full);
       updateConversationUrl(conversation.id);
     } catch (err) {
       setError(errorMessage(err, "Could not open conversation"));
     }
   };
 
-  const upload = async (file: File) => {
-    setUploading(true);
+  const loadMoreMessages = async () => {
+    if (!active || !hasMore || loadingMore) return;
+    const oldest = active.messages?.[0]?.created_at ?? nextCursor;
+    if (!oldest) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.getMessages(active.id, 50, oldest);
+      // Prepend older messages
+      setActive((prev) =>
+        prev
+          ? {
+              ...prev,
+              messages: [...page.messages, ...(prev.messages ?? [])],
+            }
+          : prev,
+      );
+      setHasMore(page.has_more);
+      setNextCursor(page.next_cursor);
+    } catch (err) {
+      setError(errorMessage(err, "Could not load older messages"));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const deleteConversation = async (conversation: Conversation) => {
+    if (deletingId) return;
+    setDeletingId(conversation.id);
     setError("");
     try {
+      await api.deleteConversation(conversation.id);
+      setConversations((items) =>
+        items.filter((item) => item.id !== conversation.id),
+      );
+      if (active?.id === conversation.id) {
+        setActive(null);
+        setHasMore(false);
+        setNextCursor(null);
+        updateConversationUrl(null, true);
+      }
+      showToast(`Deleted “${conversation.title}”.`, "success");
+    } catch (err) {
+      const msg = errorMessage(err, "Could not delete conversation");
+      setError(msg);
+      showToast(msg, "error");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    setUploadFileName(file.name);
+    setError("");
+    const loadingToastId = showToast(
+      `Uploading “${file.name}” — parsing & indexing…`,
+      "loading",
+    );
+    try {
       const conversation = await api.upload(file);
+      // upload response is metadata-only; ensure messages empty and pagination reset
+      const newActive = { ...conversation, messages: [] } as Conversation;
+      setHasMore(false);
+      setNextCursor(null);
       setConversations((items) => [conversation, ...items]);
-      setActive(conversation);
+      setActive(newActive);
       updateConversationUrl(conversation.id);
       setSidebarOpen(false);
+      setToasts((prev) => prev.filter((t) => t.id !== loadingToastId));
+      showToast(`“${file.name}” indexed — ready to chat.`, "success");
     } catch (err) {
-      setError(errorMessage(err, "Upload failed"));
+      setToasts((prev) => prev.filter((t) => t.id !== loadingToastId));
+      const msg = errorMessage(err, "Upload failed");
+      setError(msg);
+      showToast(msg, "error");
     } finally {
       setUploading(false);
+      setUploadFileName(null);
     }
   };
 
@@ -193,6 +310,8 @@ function App() {
         ),
       );
     } catch (err) {
+
+      console.log(err)
       setError(errorMessage(err, "Message failed"));
       setActive((current) => {
         if (!current) return current;
@@ -245,6 +364,8 @@ function App() {
     setUser(null);
     setConversations([]);
     setActive(null);
+    setHasMore(false);
+    setNextCursor(null);
     updateConversationUrl(null, true);
   };
 
@@ -272,13 +393,15 @@ function App() {
         user={user}
         open={sidebarOpen}
         uploading={uploading}
+        deletingId={deletingId}
         onClose={() => setSidebarOpen(false)}
         onNew={() => fileInput.current?.click()}
         onSelect={selectConversation}
+        onDelete={(conversation) => void deleteConversation(conversation)}
         onSignOut={signOut}
       />
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-4 border-b border-[var(--line)] px-[18px] sm:px-[42px] pb-3 pt-5">
+        <header className="flex items-center gap-4 border-b border-[var(--line)] px-[18px] sm:px-[42px] h-[71px]">
           <button
             className="grid place-items-center border-0 bg-transparent p-2 text-[var(--muted)] md:hidden"
             onClick={() => setSidebarOpen(true)}
@@ -321,6 +444,9 @@ function App() {
             onQueryChange={setQuery}
             onSubmit={send}
             onRetry={(text) => void sendQuestion(text)}
+            hasMore={hasMore}
+            isLoadingMore={loadingMore}
+            onLoadMore={() => void loadMoreMessages()}
           />
         ) : (
           <Welcome
@@ -340,6 +466,8 @@ function App() {
           event.target.value = "";
         }}
       />
+      {uploading && <UploadOverlay fileName={uploadFileName} />}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

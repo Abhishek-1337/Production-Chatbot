@@ -1,3 +1,4 @@
+import { useEffect, useRef, useCallback } from "react";
 import type { FormEvent } from "react";
 import type { Conversation } from "../types";
 import { Icon } from "./Icon";
@@ -12,6 +13,9 @@ type ChatViewProps = {
   onQueryChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
   onRetry: (query: string) => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
 export function ChatView({
@@ -22,12 +26,102 @@ export function ChatView({
   onQueryChange,
   onSubmit,
   onRetry,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: ChatViewProps) {
   const messages = active.messages ?? [];
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevMessageCountRef = useRef(messages.length);
+  const shouldStickToBottomRef = useRef(true);
+  const pendingPrependHeightRef = useRef<number | null>(null);
+  const prevFirstIdRef = useRef<string | null>(messages[0]?.id ?? null);
+
+  // Auto-scroll to bottom on initial load or new messages at bottom
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: smooth ? "smooth" : "auto",
+    });
+  }, []);
+
+  // Initial scroll to bottom when conversation changes (id)
+  useEffect(() => {
+    prevMessageCountRef.current = messages.length;
+    prevFirstIdRef.current = messages[0]?.id ?? null;
+    shouldStickToBottomRef.current = true;
+    pendingPrependHeightRef.current = null;
+    // Wait for render
+    requestAnimationFrame(() => scrollToBottom(false));
+  }, [active.id, scrollToBottom]);
+
+  // Keep scroll anchored when prepending older messages, or stick to bottom for new messages
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const prevCount = prevMessageCountRef.current;
+    const newCount = messages.length;
+    if (newCount > prevCount) {
+      // If we triggered a prepend, preserve scroll position
+      if (pendingPrependHeightRef.current !== null) {
+        const delta = el.scrollHeight - pendingPrependHeightRef.current;
+        if (delta > 0) {
+          el.scrollTop += delta;
+        }
+        pendingPrependHeightRef.current = null;
+      } else {
+        const wasAtBottom =
+          shouldStickToBottomRef.current ||
+          el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+        // Detect prepend vs append via first id
+        const isPrepend =
+          prevCount > 0 && prevFirstIdRef.current !== messages[0]?.id;
+        if (!isPrepend && wasAtBottom) {
+          scrollToBottom(newCount - prevCount <= 2);
+        }
+      }
+    }
+    prevMessageCountRef.current = newCount;
+    prevFirstIdRef.current = messages[0]?.id ?? null;
+  }, [messages, scrollToBottom]);
+
+  const trackScrollPosition = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    shouldStickToBottomRef.current = atBottom;
+    // Trigger load more when near top (within 200px) and has more
+    if (el.scrollTop < 200 && hasMore && !isLoadingMore && onLoadMore) {
+      pendingPrependHeightRef.current = el.scrollHeight;
+      onLoadMore();
+    }
+  }, [hasMore, isLoadingMore, onLoadMore]);
+
+  // Throttle scroll handler
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        trackScrollPosition();
+        ticking = false;
+      });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [trackScrollPosition]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto px-[22px] py-[35px] sm:px-[8%] sm:py-[55px]">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-auto px-[22px] py-[35px] sm:px-[8%] sm:py-[55px]"
+      >
         <div className="mb-9 border-b border-[var(--line)] pb-[30px]">
           <div className="mb-6 text-[var(--amber)]">
             <Icon name="book" size={24} />
@@ -43,6 +137,29 @@ export function ChatView({
             contents only.
           </p>
         </div>
+
+        {/* Top sentinel / loading indicator */}
+        {isLoadingMore && (
+          <div className="mb-4 flex justify-center py-2 text-xs text-[var(--muted)]">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+              Loading older messages...
+            </span>
+          </div>
+        )}
+        {!isLoadingMore && hasMore && messages.length > 0 && (
+          <div className="mb-4 flex justify-center">
+            <span className="text-[11px] tracking-wide text-[var(--muted)]">
+              Scroll up to load older messages
+            </span>
+          </div>
+        )}
+        {!hasMore && messages.length > 0 && (
+          <div className="mb-4 flex justify-center">
+            <span className="text-[11px] text-[var(--muted)]">Beginning of conversation</span>
+          </div>
+        )}
+
         {messages.map((message, index) => (
           <article
             key={message.id}
