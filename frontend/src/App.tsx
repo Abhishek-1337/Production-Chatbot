@@ -43,6 +43,9 @@ function App() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [selectingId, setSelectingId] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -90,6 +93,8 @@ function App() {
   useEffect(() => {
     if (!token) return;
     const client = createApi(token);
+    setConversationsLoading(true);
+    setError("");
     Promise.all([client.getUser(), client.getConversations()])
       .then(async ([me, chats]) => {
         setUser(me);
@@ -97,12 +102,17 @@ function App() {
         const conversationId = getConversationIdFromUrl();
         const conversation = chats.find((item) => item.id === conversationId);
         if (conversationId && conversation) {
+          setConversationLoading(true);
+          setSelectingId(conversation.id);
           try {
             const full = await loadConversationWithMessages(client, conversation.id);
             setActive(full);
           } catch (err) {
             updateConversationUrl(null, true);
             setError(errorMessage(err, "Could not open conversation"));
+          } finally {
+            setConversationLoading(false);
+            setSelectingId(null);
           }
         } else if (conversationId) {
           updateConversationUrl(null, true);
@@ -116,7 +126,8 @@ function App() {
           return;
         }
         setError(errorMessage(err, "Could not load your workspace"));
-      });
+      })
+      .finally(() => setConversationsLoading(false));
   }, [token]);
 
   useEffect(() => {
@@ -130,6 +141,9 @@ function App() {
         return;
       }
 
+      setConversationLoading(true);
+      setSelectingId(conversationId);
+      setError("");
       try {
         const client = createApi(token);
         const full = await loadConversationWithMessages(client, conversationId);
@@ -138,6 +152,9 @@ function App() {
         updateConversationUrl(null, true);
         setActive(null);
         setError("Could not open conversation");
+      } finally {
+        setConversationLoading(false);
+        setSelectingId(null);
       }
     };
 
@@ -146,16 +163,26 @@ function App() {
   }, [token]);
 
   const selectConversation = async (conversation: Conversation) => {
+    if (conversationLoading) return;
+    if (active?.id === conversation.id && (active.messages?.length ?? 0) > 0) {
+      setSidebarOpen(false);
+      return;
+    }
     setError("");
     setSidebarOpen(false);
     setHasMore(false);
     setNextCursor(null);
+    setConversationLoading(true);
+    setSelectingId(conversation.id);
     try {
       const full = await loadConversationWithMessages(api, conversation.id);
       setActive(full);
       updateConversationUrl(conversation.id);
     } catch (err) {
       setError(errorMessage(err, "Could not open conversation"));
+    } finally {
+      setConversationLoading(false);
+      setSelectingId(null);
     }
   };
 
@@ -366,6 +393,9 @@ function App() {
     setActive(null);
     setHasMore(false);
     setNextCursor(null);
+    setConversationsLoading(false);
+    setConversationLoading(false);
+    setSelectingId(null);
     updateConversationUrl(null, true);
   };
 
@@ -394,6 +424,8 @@ function App() {
         open={sidebarOpen}
         uploading={uploading}
         deletingId={deletingId}
+        loadingConversations={conversationsLoading}
+        selectingId={selectingId}
         onClose={() => setSidebarOpen(false)}
         onNew={() => fileInput.current?.click()}
         onSelect={selectConversation}
@@ -435,7 +467,20 @@ function App() {
             </span> */}
           </div>
         </header>
-        {active ? (
+        {conversationLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-12">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+            <div className="text-center">
+              <p className="m-0 text-sm font-medium text-[var(--ink)]">Loading conversation…</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Fetching messages from the database</p>
+            </div>
+            <div className="mt-4 w-full max-w-[400px] space-y-3 opacity-60">
+              <div className="h-4 w-3/4 animate-pulse rounded bg-[#e4e9e4] dark:bg-[#22343c]" />
+              <div className="h-4 w-full animate-pulse rounded bg-[#e4e9e4] dark:bg-[#22343c]" />
+              <div className="h-4 w-5/6 animate-pulse rounded bg-[#e4e9e4] dark:bg-[#22343c]" />
+            </div>
+          </div>
+        ) : active ? (
           <ChatView
             active={active}
             loading={loading}

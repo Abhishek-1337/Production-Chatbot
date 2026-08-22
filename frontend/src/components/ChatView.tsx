@@ -37,7 +37,6 @@ export function ChatView({
   const pendingPrependHeightRef = useRef<number | null>(null);
   const prevFirstIdRef = useRef<string | null>(messages[0]?.id ?? null);
 
-  // Auto-scroll to bottom on initial load or new messages at bottom
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current;
     if (!el) return;
@@ -47,24 +46,20 @@ export function ChatView({
     });
   }, []);
 
-  // Initial scroll to bottom when conversation changes (id)
   useEffect(() => {
     prevMessageCountRef.current = messages.length;
     prevFirstIdRef.current = messages[0]?.id ?? null;
     shouldStickToBottomRef.current = true;
     pendingPrependHeightRef.current = null;
-    // Wait for render
     requestAnimationFrame(() => scrollToBottom(false));
   }, [active.id, scrollToBottom]);
 
-  // Keep scroll anchored when prepending older messages, or stick to bottom for new messages
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const prevCount = prevMessageCountRef.current;
     const newCount = messages.length;
     if (newCount > prevCount) {
-      // If we triggered a prepend, preserve scroll position
       if (pendingPrependHeightRef.current !== null) {
         const delta = el.scrollHeight - pendingPrependHeightRef.current;
         if (delta > 0) {
@@ -72,14 +67,11 @@ export function ChatView({
         }
         pendingPrependHeightRef.current = null;
       } else {
-        const wasAtBottom =
-          shouldStickToBottomRef.current ||
-          el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-        // Detect prepend vs append via first id
         const isPrepend =
           prevCount > 0 && prevFirstIdRef.current !== messages[0]?.id;
-        if (!isPrepend && wasAtBottom) {
-          scrollToBottom(newCount - prevCount <= 2);
+        if (!isPrepend) {
+          shouldStickToBottomRef.current = true;
+          scrollToBottom(true);
         }
       }
     }
@@ -87,19 +79,26 @@ export function ChatView({
     prevFirstIdRef.current = messages[0]?.id ?? null;
   }, [messages, scrollToBottom]);
 
+  useEffect(() => {
+    if (!loading) return;
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    if (last.role === "assistant" || last.role === "user") {
+      requestAnimationFrame(() => scrollToBottom(false));
+    }
+  }, [loading, messages.length, messages[messages.length - 1]?.content, scrollToBottom]);
+
   const trackScrollPosition = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     shouldStickToBottomRef.current = atBottom;
-    // Trigger load more when near top (within 200px) and has more
     if (el.scrollTop < 200 && hasMore && !isLoadingMore && onLoadMore) {
       pendingPrependHeightRef.current = el.scrollHeight;
       onLoadMore();
     }
   }, [hasMore, isLoadingMore, onLoadMore]);
 
-  // Throttle scroll handler
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;

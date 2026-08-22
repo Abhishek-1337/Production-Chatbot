@@ -10,6 +10,8 @@ type SidebarProps = {
   open: boolean;
   uploading: boolean;
   deletingId: string | null;
+  loadingConversations: boolean;
+  selectingId: string | null;
   onClose: () => void;
   onNew: () => void;
   onSelect: (conversation: Conversation) => void;
@@ -17,16 +19,41 @@ type SidebarProps = {
   onSignOut: () => void;
 };
 
+function SidebarSkeleton() {
+  return (
+    <div className="space-y-2 px-1 py-1" aria-label="Loading conversations" aria-busy="true">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex animate-pulse gap-3 border-l-2 border-l-transparent px-3 py-3"
+        >
+          <span className="h-7 w-7 shrink-0 bg-[#d6e0d8] dark:bg-[#22343c]" />
+          <span className="flex min-w-0 flex-1 flex-col gap-2 pt-1">
+            <span className="h-3 w-3/4 rounded bg-[#d6e0d8] dark:bg-[#22343c]" />
+            <span className="h-2 w-1/2 rounded bg-[#e4e9e4] dark:bg-[#1d2c33]" />
+          </span>
+        </div>
+      ))}
+      <div className="flex items-center justify-center gap-2 py-4 text-xs text-[var(--muted)]">
+        <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+        Loading conversations…
+      </div>
+    </div>
+  );
+}
+
 function ConversationCard({
   conversation,
   isActive,
   isDeleting,
+  isSelecting,
   onSelect,
   onDelete,
 }: {
   conversation: Conversation;
   isActive: boolean;
   isDeleting: boolean;
+  isSelecting: boolean;
   onSelect: (conversation: Conversation) => void;
   onDelete: (conversation: Conversation) => void;
 }) {
@@ -49,15 +76,25 @@ function ConversationCard({
       className={`group relative flex w-full gap-3 border-l-2 px-3 py-3 transition hover:bg-[#e4e9e4] dark:hover:bg-[#22343c] ${isActive ? "border-l-[var(--amber)] bg-[#e4e9e4] dark:bg-[#22343c]" : "border-l-transparent"}`}
     >
       <button
-        className="flex min-w-0 flex-1 gap-3 border-0 bg-transparent p-0 text-left text-[var(--ink)]"
+        className="flex min-w-0 flex-1 gap-3 border-0 bg-transparent p-0 text-left text-[var(--ink)] disabled:opacity-60"
         onClick={() => onSelect(conversation)}
+        disabled={isSelecting}
       >
         <span className="grid h-7 w-7 shrink-0 place-items-center border border-[var(--line)] bg-[#f7f8f5] text-[#7c898c] dark:bg-[#1d2c33] dark:text-[#a3b2b0]">
-          <Icon name="file" size={16} />
+          {isSelecting ? (
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+          ) : (
+            <Icon name="file" size={16} />
+          )}
         </span>
         <span className="flex min-w-0 flex-col gap-1">
-          <strong className="truncate text-[13px] font-semibold">
+          <strong className="flex items-center gap-2 truncate text-[13px] font-semibold">
             {conversation.title}
+            {isSelecting && (
+              <span className="shrink-0 text-[10px] font-medium tracking-wide text-[var(--amber)]">
+                Loading…
+              </span>
+            )}
           </strong>
           <small className="truncate text-[11px] text-[#899398] dark:text-[#9eaaa8]">
             {conversation.document_name ?? "Document"} ·{" "}
@@ -122,6 +159,8 @@ export function Sidebar({
   open,
   uploading,
   deletingId,
+  loadingConversations,
+  selectingId,
   onClose,
   onNew,
   onSelect,
@@ -171,7 +210,9 @@ export function Sidebar({
         </button>
       </div>
       <div className="flex-1 overflow-auto px-3 py-1">
-        {conversations.length === 0 ? (
+        {loadingConversations ? (
+          <SidebarSkeleton />
+        ) : conversations.length === 0 ? (
           <div className="px-5 py-[42px] text-center text-[#9aa4a4]">
             <Icon name="file" size={20} />
             <p className="mb-0 mt-3 text-[13px] text-[#707c7e] dark:text-[#b7c2bf]">
@@ -186,6 +227,7 @@ export function Sidebar({
               conversation={conversation}
               isActive={active?.id === conversation.id}
               isDeleting={deletingId === conversation.id}
+              isSelecting={selectingId === conversation.id}
               onSelect={onSelect}
               onDelete={onDelete}
             />
