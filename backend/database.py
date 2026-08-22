@@ -13,7 +13,7 @@ engine = create_async_engine(
     connect_args={
         "ssl": "require",
     },
-    echo=True,
+    echo=False,
 )
 
 SessionLocal = async_sessionmaker(
