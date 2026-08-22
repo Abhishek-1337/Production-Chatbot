@@ -17,6 +17,8 @@ from typing import Optional, Tuple
 import chromadb
 from dotenv import load_dotenv
 
+from services.retry_utils import retry_embedding, retry_vector_insert, retry_vector_query
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -27,10 +29,8 @@ _THRESHOLD = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.93"))
 _EMBEDDING_MODEL = os.getenv("SEMANTIC_CACHE_EMBEDDING_MODEL", "text-embedding-3-small")
 _ENABLED = os.getenv("SEMANTIC_CACHE_ENABLED", "true").lower() not in ("0", "false", "no")
 
-# Self-describing collection — update both when switching model (e.g. large = 3072)
 EMBEDDING_MODEL = _EMBEDDING_MODEL
 EMBEDDING_DIM = 1536 if "small" in _EMBEDDING_MODEL else 3072 if "large" in _EMBEDDING_MODEL else 1536
-# Allow explicit dim override
 if os.getenv("SEMANTIC_CACHE_EMBEDDING_DIM"):
     try:
         EMBEDDING_DIM = int(os.getenv("SEMANTIC_CACHE_EMBEDDING_DIM"))
@@ -71,7 +71,6 @@ def get_semantic_cache_collection(client: chromadb.PersistentClient | None = Non
     try:
         col = client.get_collection(_COLLECTION_NAME)
         md = col.metadata or {}
-        # Missing or mismatched metadata -> stale (e.g. legacy 3-D test data)
         if md.get("embedding_model") != EMBEDDING_MODEL or int(md.get("embedding_dim") or 0) != EMBEDDING_DIM:
             return _recreate_collection(client)
         return col
@@ -106,8 +105,13 @@ def _get_openai_client():
         return None
 
 
+@retry_embedding
+def _call_openai_embedding(client, model: str, text: str):
+    return client.embeddings.create(model=model, input=text)
+
+
 def _embed_query(text: str) -> Optional[list[float]]:
-    """Embed `text` via OpenAI. Returns None on failure."""
+    """Embed `text` via OpenAI. Returns None on failure. Retries transient 429/timeout/5xx."""
     text = text.strip()
     if not text:
         return None
@@ -115,10 +119,35 @@ def _embed_query(text: str) -> Optional[list[float]]:
     if client is None:
         return None
     try:
-        resp = client.embeddings.create(model=_EMBEDDING_MODEL, input=text)
+        resp = _call_openai_embedding(client, _EMBEDDING_MODEL, text)
         return resp.data[0].embedding
     except Exception:
         return None
+
+
+@retry_vector_query
+def _vector_query(col, query_embeddings, n_results, where, include):
+    return col.query(
+        query_embeddings=query_embeddings,
+        n_results=n_results,
+        where=where,
+        include=include,
+    )
+
+
+@retry_vector_query
+def _vector_count(col):
+    return col.count()
+
+
+@retry_vector_query
+def _vector_get(col, where, include):
+    return col.get(where=where, include=include)
+
+
+@retry_vector_insert
+def _vector_add(col, ids, embeddings, documents, metadatas):
+    return col.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
 
 
 def is_enabled() -> bool:
@@ -155,7 +184,7 @@ def lookup(
     try:
         collection = _get_collection()
         try:
-            count = collection.count()
+            count = _vector_count(collection)
         except Exception:
             count = 1
         if count == 0:
@@ -164,7 +193,8 @@ def lookup(
         where = {"$and": [{"user_id": user_id}, {"document_id": document_id}]}
 
         def _do_query(col):
-            return col.query(
+            return _vector_query(
+                col,
                 query_embeddings=[embedding],
                 n_results=1,
                 where=where,
@@ -240,7 +270,8 @@ def store(
         cache_id = str(uuid.uuid4())
 
         def _do_add(col, cid):
-            col.add(
+            _vector_add(
+                col,
                 ids=[cid],
                 embeddings=[embedding],
                 documents=[query],
@@ -286,7 +317,7 @@ def clear_scope(user_id: Optional[str] = None, document_id: Optional[str] = None
             pass
 
         if where is not None:
-            res = collection.get(where=where, include=[])  # type: ignore[arg-type]
+            res = _vector_get(collection, where=where, include=[])  # type: ignore[arg-type]
             ids = res.get("ids") or []
             if ids:
                 collection.delete(ids=ids)

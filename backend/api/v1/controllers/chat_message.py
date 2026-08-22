@@ -13,7 +13,18 @@ from services.input_guardrails import (
     is_answer_grounded,
     mask_pii,
 )
+from services.retry_utils import retry_llm
 from api.v1.controllers.document import agent
+
+
+@retry_llm
+async def _run_agent_stream(prompt: str) -> str:
+    """Run LLM streaming with retry on 429/timeout/5xx. Retries transient failures."""
+    full = ""
+    async with agent.run_stream(prompt) as result:
+        async for chunk in result.stream_text():
+            full += chunk
+    return full
 
 MAX_HISTORY_MESSAGES = 12
 MAX_MESSAGE_LENGTH = 4000
@@ -112,9 +123,7 @@ async def chat_message_stream(
 
         full_answer = ""
         try:
-            async with agent.run_stream(user_prompt) as result:
-                async for chunk in result.stream_text():
-                    full_answer += chunk
+            full_answer = await _run_agent_stream(user_prompt)
         except Exception:
             raise
 

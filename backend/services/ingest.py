@@ -4,7 +4,19 @@ from markitdown import MarkItDown
 from chonkie import Pipeline
 import chromadb
 
+from services.retry_utils import retry_vector_insert
+
 _CHROMA_PATH = str(Path(__file__).resolve().parent.parent / "chroma_db")
+
+
+@retry_vector_insert
+def _add_documents(collection, documents, ids, embeddings, metadatas):
+    return collection.add(
+        documents=documents,
+        ids=ids,
+        embeddings=embeddings,
+        metadatas=metadatas,
+    )
 
 
 def ingest_doc(data, document_id, user_id): 
@@ -39,11 +51,12 @@ def ingest_doc(data, document_id, user_id):
                 "user_id": str(user_id),
             })
     
-        collection.add(
+        _add_documents(
+            collection,
             documents=documents_list,
             ids=ids_list,
             embeddings=embeddings_list,
-            metadatas=metadatas_list
+            metadatas=metadatas_list,
         )
 
     except Exception as e:

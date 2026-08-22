@@ -3,6 +3,8 @@ from pathlib import Path
 import chromadb
 from chonkie import SentenceTransformerEmbeddings
 
+from services.retry_utils import retry_vector_query
+
 _cached_client: chromadb.PersistentClient | None = None
 _cached_embeddings: SentenceTransformerEmbeddings | None = None
 
@@ -35,12 +37,22 @@ def _get_embeddings() -> SentenceTransformerEmbeddings:
     return _cached_embeddings
 
 
+@retry_vector_query
+def _query_documents(collection, query_embeddings, n_results, where):
+    return collection.query(
+        query_embeddings=query_embeddings,
+        n_results=n_results,
+        where=where,
+    )
+
+
 def retrieve_the_doc(query, user_id, document_id):
     try:
         collection = _get_client().get_or_create_collection(name="documents")
         embeddings = _get_embeddings()
         query_embedding = embeddings.embed(query)
-        results = collection.query(
+        results = _query_documents(
+            collection,
             query_embeddings=[query_embedding],
             n_results=3,
             where={
