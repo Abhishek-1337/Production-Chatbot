@@ -124,6 +124,8 @@ export async function readAssistantStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let done = false;
+  let sawCached = false;
+  let sawTokens = false;
   while (!done) {
     const result = await reader.read();
     done = result.done;
@@ -133,7 +135,30 @@ export async function readAssistantStream(
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
       const event = JSON.parse(line.slice(6));
-      if (event.event === "token") onToken(event.content);
+      if (event.event === "cached") {
+        sawCached = true;
+        console.log(
+          `%c[SEMANTIC CACHE] ✅ HIT (frontend) similarity=${(event.similarity ?? 0).toFixed(4)} — serving cached answer, no LLM call`,
+          "color: #0a7d33; font-weight: bold; background: #e6f4ea; padding: 2px 6px; border-radius: 4px;",
+        );
+      }
+      if (event.event === "token") {
+        sawTokens = true;
+        onToken(event.content);
+      }
+      if (event.event === "done") {
+        if (event.cached) {
+          console.log(
+            "%c[SEMANTIC CACHE] ✔ done (cached=true) — response was from cache",
+            "color: #0a7d33; font-weight: bold;",
+          );
+        } else if (sawTokens && !sawCached) {
+          console.log(
+            "%c[SEMANTIC CACHE] ❌ MISS (frontend) — response from LLM, will be cached for next time",
+            "color: #b45309; font-weight: bold; background: #fef3c7; padding: 2px 6px; border-radius: 4px;",
+          );
+        }
+      }
       if (event.event === "error") {
         throw new Error(event.content ?? "The assistant could not answer.");
       }

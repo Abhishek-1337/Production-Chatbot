@@ -293,7 +293,9 @@ function App() {
     );
 
     try {
+      console.log(`%c[CHAT] → sending query: ${text.slice(0, 80)}`, "color: #1e40af; font-weight: 500;");
       const response = await api.sendMessage(text, conversationId);
+      console.log("[CHAT] ← streaming response started...", "color: #1e40af;");
       setActive((current) =>
         current
           ? {
