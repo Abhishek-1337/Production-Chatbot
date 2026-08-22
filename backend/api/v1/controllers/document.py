@@ -36,7 +36,6 @@ async def upload_document_controller(file: UploadFile, user_id: str, db: AsyncSe
 
 def query_doc_controller(data: Query, user_id: str):
     context = doc_retrieval.retrieve_the_doc(data.query.strip(), user_id, data.document_id)
-    print(context)
     user_prompt = f"Document context:\n{context}\n\nQuestion: {data.query.strip()}"
     result = agent.run_sync(user_prompt)
     return {

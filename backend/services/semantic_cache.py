@@ -9,7 +9,6 @@ SEMANTIC_CACHE_THRESHOLD, recommended 0.92-0.95).
 
 from __future__ import annotations
 
-import logging
 import os
 import uuid
 from pathlib import Path
@@ -17,8 +16,6 @@ from typing import Optional, Tuple
 
 import chromadb
 from dotenv import load_dotenv
-
-logger = logging.getLogger(__name__)
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -76,25 +73,15 @@ def get_semantic_cache_collection(client: chromadb.PersistentClient | None = Non
         md = col.metadata or {}
         # Missing or mismatched metadata -> stale (e.g. legacy 3-D test data)
         if md.get("embedding_model") != EMBEDDING_MODEL or int(md.get("embedding_dim") or 0) != EMBEDDING_DIM:
-            print(
-                f"[SEMANTIC CACHE] metadata mismatch {md} vs model={EMBEDDING_MODEL} dim={EMBEDDING_DIM} -> recreating collection",
-                flush=True,
-            )
-            logger.warning("semantic_cache metadata mismatch %s vs expected model=%s dim=%s -> recreating", md, EMBEDDING_MODEL, EMBEDDING_DIM)
             return _recreate_collection(client)
         return col
     except Exception as e:
-        # get_collection raises if not found (e.g. ValueError / NotFoundError)
-        # Treat as not-found -> create
         msg = str(e)
         if "does not exist" in msg.lower() or "not found" in msg.lower():
             return client.create_collection(
                 name=_COLLECTION_NAME,
                 metadata={"hnsw:space": "cosine", "embedding_model": EMBEDDING_MODEL, "embedding_dim": EMBEDDING_DIM},
             )
-        # Unexpected error -> try recreate once
-        print(f"[SEMANTIC CACHE] get_collection failed: {e} -> recreating", flush=True)
-        logger.warning("semantic_cache get_collection failed: %s -> recreating", e)
         return _recreate_collection(client)
 
 
@@ -108,16 +95,14 @@ def _get_openai_client():
     if _cached_openai_client is not None:
         return _cached_openai_client
     try:
-        import openai  # lazy import
+        import openai
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            logger.warning("OPENAI_API_KEY not set — semantic cache disabled for embeddings")
             return None
         _cached_openai_client = openai.OpenAI(api_key=api_key)
         return _cached_openai_client
-    except Exception as exc: 
-        logger.exception("failed to init OpenAI client for semantic cache: %s", exc)
+    except Exception:
         return None
 
 
@@ -128,15 +113,11 @@ def _embed_query(text: str) -> Optional[list[float]]:
         return None
     client = _get_openai_client()
     if client is None:
-        print("[SEMANTIC CACHE] OpenAI client not available", flush=True)
         return None
     try:
         resp = client.embeddings.create(model=_EMBEDDING_MODEL, input=text)
-        print(f"[SEMANTIC CACHE] embedded q={text[:60]!r} model={_EMBEDDING_MODEL} dim={len(resp.data[0].embedding)}", flush=True)
-        return resp.data[0].embedding  
-    except Exception as exc:  
-        print(f"[SEMANTIC CACHE] OpenAI embedding failed ({_EMBEDDING_MODEL}): {exc}", flush=True)
-        logger.warning("OpenAI embedding failed (%s): %s", _EMBEDDING_MODEL, exc)
+        return resp.data[0].embedding
+    except Exception:
         return None
 
 
@@ -161,17 +142,14 @@ def lookup(
     similarity is cosine similarity in [ -1, 1 ], typically 0..1.
     """
     if not _ENABLED:
-        print("[SEMANTIC CACHE] disabled, skipping lookup", flush=True)
         return None, None
     thr = threshold if threshold is not None else _THRESHOLD
     query = query.strip()
     if not query:
         return None, None
 
-    print(f"[SEMANTIC CACHE] lookup q={query[:80]!r} user={user_id} doc={document_id} thr={thr}", flush=True)
     embedding = _embed_query(query)
     if embedding is None:
-        print("[SEMANTIC CACHE] embedding failed, skipping cache", flush=True)
         return None, None
 
     try:
@@ -179,7 +157,7 @@ def lookup(
         try:
             count = collection.count()
         except Exception:
-            count = 1  
+            count = 1
         if count == 0:
             return None, None
 
@@ -197,8 +175,6 @@ def lookup(
             results = _do_query(collection)
         except Exception as q_exc:
             if "expecting embedding with dimension" in str(q_exc).lower():
-                print(f"[SEMANTIC CACHE] query dimension mismatch: {q_exc} -> recreating collection and retrying", flush=True)
-                logger.warning("semantic_cache query dimension mismatch: %s -> recreating", q_exc)
                 client = _get_chroma_client()
                 try:
                     client.delete_collection(_COLLECTION_NAME)
@@ -222,34 +198,13 @@ def lookup(
         similarity = 1.0 - distance_f
 
         hit = similarity >= thr
-        # Console visibility for cache debugging (backend terminal)
-        print(
-            f"[SEMANTIC CACHE] {'HIT' if hit else 'MISS'} | user={user_id} doc={document_id} "
-            f"sim={similarity:.4f} thr={thr:.2f} q={query[:80]!r}",
-            flush=True,
-        )
-        logger.info(
-            "semantic_cache query user=%s doc=%s sim=%.4f thr=%.2f hit=%s",
-            user_id,
-            document_id,
-            similarity,
-            thr,
-            hit,
-        )
 
         if hit:
             answer = metadatas[0].get("answer")  # type: ignore[union-attr]
             if answer:
-                print(f"[SEMANTIC CACHE] -> returning cached answer ({len(str(answer))} chars) sim={similarity:.4f}", flush=True)
                 return str(answer), float(similarity)
-            else:
-                print("[SEMANTIC CACHE] hit but no answer in metadata", flush=True)
-        else:
-            print(f"[SEMANTIC CACHE] -> below threshold, will call LLM", flush=True)
         return None, float(similarity)
-    except Exception as exc:  # pragma: no cover
-        print(f"[SEMANTIC CACHE] lookup failed: {exc}", flush=True)
-        logger.exception("semantic cache lookup failed: %s", exc)
+    except Exception:
         return None, None
 
 
@@ -302,8 +257,6 @@ def store(
             _do_add(collection, cache_id)
         except Exception as add_exc:
             if "expecting embedding with dimension" in str(add_exc).lower():
-                print(f"[SEMANTIC CACHE] add dimension mismatch: {add_exc} -> recreating collection and retrying", flush=True)
-                logger.warning("semantic_cache add dimension mismatch: %s -> recreating", add_exc)
                 client = _get_chroma_client()
                 try:
                     client.delete_collection(_COLLECTION_NAME)
@@ -313,12 +266,8 @@ def store(
                 _do_add(collection, cache_id)
             else:
                 raise
-        print(f"[SEMANTIC CACHE] STORE id={cache_id} user={user_id} doc={document_id} q={query[:60]!r} answer_len={len(stored_answer)}", flush=True)
-        logger.info("semantic_cache store id=%s user=%s doc=%s q=%.60s", cache_id, user_id, document_id, query)
         return True
-    except Exception as exc:  # pragma: no cover
-        print(f"[SEMANTIC CACHE] store failed: {exc}", flush=True)
-        logger.exception("semantic cache store failed: %s", exc)
+    except Exception:
         return False
 
 
@@ -334,11 +283,9 @@ def clear_scope(user_id: Optional[str] = None, document_id: Optional[str] = None
         elif document_id:
             where = {"document_id": document_id}
         else:
-            # dangerous: clear all — require explicit call
             pass
 
         if where is not None:
-            # fetch ids to delete
             res = collection.get(where=where, include=[])  # type: ignore[arg-type]
             ids = res.get("ids") or []
             if ids:
@@ -346,6 +293,5 @@ def clear_scope(user_id: Optional[str] = None, document_id: Optional[str] = None
                 return len(ids)
             return 0
         return 0
-    except Exception as exc:  # pragma: no cover
-        logger.exception("semantic_cache clear failed: %s", exc)
+    except Exception:
         return 0

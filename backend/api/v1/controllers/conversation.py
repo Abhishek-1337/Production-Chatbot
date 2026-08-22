@@ -1,5 +1,3 @@
-import logging
-import time
 import uuid
 from datetime import datetime, timezone
 
@@ -13,8 +11,6 @@ from models.conversation import Conversation
 from models.document import Document
 from models.user import User
 from services import ingest, parser
-
-logger = logging.getLogger(__name__)
 
 
 ALLOWED_TYPES = {
@@ -54,7 +50,6 @@ async def create_conversation_from_upload(
 async def get_user_conversations(
     user: User, db: AsyncSession, limit: int = 20, offset: int = 0
 ) -> list[Conversation]:
-    start = time.perf_counter()
     result = await db.execute(
         select(Conversation)
         .where(Conversation.user_id == user.id)
@@ -63,20 +58,7 @@ async def get_user_conversations(
         .limit(limit)
         .offset(offset)
     )
-    db_ms = (time.perf_counter() - start) * 1000
-    start_ser = time.perf_counter()
     conversations = list(result.scalars().all())
-    ser_ms = (time.perf_counter() - start_ser) * 1000
-    logger.info(
-        "get_user_conversations user_id=%s count=%d limit=%d offset=%d db=%.2fms serialization=%.2fms total=%.2fms",
-        user.id,
-        len(conversations),
-        limit,
-        offset,
-        db_ms,
-        ser_ms,
-        db_ms + ser_ms,
-    )
     return conversations
 
 
@@ -85,7 +67,6 @@ async def get_user_conversation(conversation_id: str, user: User, db: AsyncSessi
     Returns conversation metadata only (without messages).
     Use get_conversation_messages for paginated message fetch.
     """
-    start = time.perf_counter()
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
@@ -95,19 +76,7 @@ async def get_user_conversation(conversation_id: str, user: User, db: AsyncSessi
             Conversation.id == conv_uuid, Conversation.user_id == user.id
         ).options(selectinload(Conversation.document))
     )
-    db_ms = (time.perf_counter() - start) * 1000
-    start_ser = time.perf_counter()
     conversation = result.scalar_one_or_none()
-    ser_ms = (time.perf_counter() - start_ser) * 1000
-    logger.info(
-        "get_user_conversation conversation_id=%s user_id=%s found=%s db=%.2fms serialization=%.2fms total=%.2fms",
-        conversation_id,
-        user.id,
-        conversation is not None,
-        db_ms,
-        ser_ms,
-        db_ms + ser_ms,
-    )
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
@@ -125,7 +94,6 @@ async def delete_conversation(
     except ValueError:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    start = time.perf_counter()
     result = await db.execute(
         select(Conversation).where(
             Conversation.id == conv_uuid, Conversation.user_id == user.id
@@ -137,13 +105,6 @@ async def delete_conversation(
 
     await db.delete(conversation)
     await db.commit()
-    db_ms = (time.perf_counter() - start) * 1000
-    logger.info(
-        "delete_conversation conversation_id=%s user_id=%s db=%.2fms",
-        conv_uuid,
-        user.id,
-        db_ms,
-    )
 
 
 async def get_conversation_messages(
@@ -170,8 +131,6 @@ async def get_conversation_messages(
     )
     if ownership.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-
-    start = time.perf_counter()
 
     # Count total for pagination UI
     total_result = await db.execute(
@@ -200,15 +159,4 @@ async def get_conversation_messages(
     # Return ASC for chat UI (oldest first)
     messages = list(reversed(rows))
 
-    db_ms = (time.perf_counter() - start) * 1000
-    logger.info(
-        "get_conversation_messages conversation_id=%s limit=%d before=%s returned=%d has_more=%s total=%d db=%.2fms",
-        conversation_id,
-        limit,
-        before.isoformat() if before else None,
-        len(messages),
-        has_more,
-        total,
-        db_ms,
-    )
     return messages, has_more, total
