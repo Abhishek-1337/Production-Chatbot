@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.chat_message import ChatMessage
 from models.conversation import Conversation
 from schemas.chat_message import ChatQuestion
-from services import doc_retrieval
+from services import doc_retrieval, semantic_cache
 from services.input_guardrails import (
     is_answer_grounded,
     mask_pii,
@@ -71,6 +71,41 @@ async def chat_message_stream(
             conversation.document_id,
             data.query.strip(),
         )
+        # --- Semantic cache lookup (OpenAI embedding, threshold ~0.93) ---
+        try:
+            cached_answer, similarity = await to_thread.run_sync(
+                semantic_cache.lookup,
+                data.query.strip(),
+                str(user_id),
+                str(conversation.document_id),
+            )
+            if cached_answer:
+                print(f"[SEMANTIC CACHE] ✅ HIT sim={similarity:.4f} thr={semantic_cache.get_threshold():.2f} -> streaming cached answer ({len(cached_answer)} chars)", flush=True)
+                logger.info("semantic cache HIT sim=%.4f thr=%.2f", similarity or 0, semantic_cache.get_threshold())
+                # stream cached answer in same chunked manner + mark as cached
+                yield f"data: {json.dumps({'event': 'cached', 'similarity': similarity})}\n\n"
+                for start in range(0, len(cached_answer), 400):
+                    yield f"data: {json.dumps({'event': 'token', 'content': cached_answer[start:start + 400]})}\n\n"
+                # persist cached hit as assistant message
+                db.add(ChatMessage(
+                    document_id=conversation.document_id,
+                    conversation_id=uuid.UUID(data.conversation_id),
+                    role="assistant",
+                    content=cached_answer,
+                ))
+                await db.commit()
+                print(f"[SEMANTIC CACHE] HIT persisted and done", flush=True)
+                yield f"data: {json.dumps({'event': 'done', 'cached': True})}\n\n"
+                return
+            elif similarity is not None:
+                print(f"[SEMANTIC CACHE] ❌ MISS sim={similarity:.4f} thr={semantic_cache.get_threshold():.2f} -> calling LLM", flush=True)
+                logger.info("semantic cache MISS sim=%.4f thr=%.2f", similarity, semantic_cache.get_threshold())
+            else:
+                print(f"[SEMANTIC CACHE] MISS (no similarity, empty cache) -> calling LLM", flush=True)
+        except Exception as cache_exc:  # fail-open
+            print(f"[SEMANTIC CACHE] lookup error (fail-open): {cache_exc}", flush=True)
+            logger.warning("semantic cache lookup error (fail-open): %s", cache_exc)
+
         try:
             context = await to_thread.run_sync(
                 doc_retrieval.retrieve_the_doc,
@@ -117,6 +152,20 @@ async def chat_message_stream(
         for start in range(0, len(safe_answer), 400):
             yield f"data: {json.dumps({'event': 'token', 'content': safe_answer[start:start + 400]})}\n\n"
         full_answer = safe_answer
+        # store in semantic cache for future hits (best-effort, fail-open)
+        try:
+            print(f"[SEMANTIC CACHE] storing answer for next hits... q={data.query.strip()[:60]!r}", flush=True)
+            await to_thread.run_sync(
+                semantic_cache.store,
+                data.query.strip(),
+                safe_answer,
+                str(user_id),
+                str(conversation.document_id),
+            )
+            print(f"[SEMANTIC CACHE] stored successfully", flush=True)
+        except Exception as store_exc:
+            print(f"[SEMANTIC CACHE] store failed (fail-open): {store_exc}", flush=True)
+            logger.warning("semantic cache store failed (fail-open): %s", store_exc)
     except Exception as error:
         logger.exception("chat_message_stream failed: %s\n%s", error, traceback.format_exc())
         yield f"data: {json.dumps({'event': 'error', 'content': 'I could not answer that question. Please try again.'})}\n\n"
