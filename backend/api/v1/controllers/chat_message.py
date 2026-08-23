@@ -26,9 +26,12 @@ async def _run_agent_stream(prompt: str) -> str:
             full += chunk
     return full
 
-MAX_HISTORY_MESSAGES = 12
+MAX_HISTORY_MESSAGES = 5
 MAX_MESSAGE_LENGTH = 4000
 
+SUMMARY_QA_COUNT = 12
+SUMMARY_WINDOW_MESSAGES = SUMMARY_QA_COUNT * 2
+SUMMARY_MAX_CHARS = 12000
 
 async def _get_conversation_history(
     conversation_id: uuid.UUID,
@@ -41,9 +44,9 @@ async def _get_conversation_history(
         .order_by(ChatMessage.created_at.desc())
         .limit(MAX_HISTORY_MESSAGES + 1)
     )
+
     messages = list(reversed(result.scalars().all()))
 
-    # The route persists the current user message before streaming starts.
     if messages and messages[-1].role == "user" and messages[-1].content == current_query:
         messages.pop()
     return messages[-MAX_HISTORY_MESSAGES:]
@@ -59,6 +62,76 @@ def _format_conversation_history(messages: list[ChatMessage]) -> str:
     )
 
 
+@retry_llm
+async def _summarize_history(formatted_history: str) -> str:
+    prompt = (
+        f"Summarise the following conversation history concisely. "
+        f"Preserve key facts, user intents, decisions, and assistant answers "
+        f"needed to continue the conversation. The history contains up to "
+        f"{SUMMARY_QA_COUNT} Q&A pairs (up to {SUMMARY_WINDOW_MESSAGES} messages). "
+        f"Return a compact summary (no preamble, no invented details):\n\n"
+        f"{formatted_history[:SUMMARY_MAX_CHARS]}"
+    )
+    result = await agent.run(prompt)
+    output = getattr(result, "output", None)
+    if output is None:
+        output = getattr(result, "data", "")
+    return str(output).strip() if output else ""
+
+
+async def _get_history_context(
+    conversation_id: uuid.UUID,
+    current_query: str,
+    db: AsyncSession,
+) -> str:
+
+    fetch_limit = MAX_HISTORY_MESSAGES + SUMMARY_WINDOW_MESSAGES + 1
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.conversation_id == conversation_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(fetch_limit)
+    )
+    messages = list(reversed(result.scalars().all()))
+
+    if messages and messages[-1].role == "user" and messages[-1].content == current_query:
+        messages.pop()
+
+    if not messages:
+        return "(No previous messages)"
+
+    if len(messages) <= MAX_HISTORY_MESSAGES:
+        return _format_conversation_history(messages[-MAX_HISTORY_MESSAGES:])
+
+    recent_messages = messages[-MAX_HISTORY_MESSAGES:]
+    older_messages = messages[-(MAX_HISTORY_MESSAGES + SUMMARY_WINDOW_MESSAGES) : -MAX_HISTORY_MESSAGES]
+    if not older_messages:
+        older_messages = messages[:-MAX_HISTORY_MESSAGES]
+        older_messages = older_messages[-SUMMARY_WINDOW_MESSAGES:]
+
+    formatted_older = _format_conversation_history(older_messages)
+    formatted_recent = _format_conversation_history(recent_messages)
+
+    try:
+        summary = await _summarize_history(formatted_older)
+        if not summary:
+            raise ValueError("Empty summary")
+    except Exception:
+        return (
+            f"Earlier conversation (truncated, summarisation unavailable):\n"
+            f"{formatted_older}\n\n"
+            f"Recent conversation (last {MAX_HISTORY_MESSAGES} messages):\n"
+            f"{formatted_recent}"
+        )
+
+    return (
+        f"Summary of earlier conversation (last {len(older_messages)} messages / up to {SUMMARY_QA_COUNT} Q&A):\n"
+        f"{summary}\n\n"
+        f"Recent conversation (last {MAX_HISTORY_MESSAGES} messages, verbatim):\n"
+        f"{formatted_recent}"
+    )
+
+
 async def chat_message_stream(
     data: ChatQuestion,
     user_id: uuid.UUID,
@@ -71,7 +144,6 @@ async def chat_message_stream(
         return
 
     try:
-        # --- Semantic cache lookup (OpenAI embedding, threshold ~0.93) ---
         try:
             cached_answer, similarity = await to_thread.run_sync(
                 semantic_cache.lookup,
@@ -80,11 +152,9 @@ async def chat_message_stream(
                 str(conversation.document_id),
             )
             if cached_answer:
-                # stream cached answer in same chunked manner + mark as cached
                 yield f"data: {json.dumps({'event': 'cached', 'similarity': similarity})}\n\n"
                 for start in range(0, len(cached_answer), 400):
                     yield f"data: {json.dumps({'event': 'token', 'content': cached_answer[start:start + 400]})}\n\n"
-                # persist cached hit as assistant message
                 db.add(ChatMessage(
                     document_id=conversation.document_id,
                     conversation_id=uuid.UUID(data.conversation_id),
@@ -108,16 +178,24 @@ async def chat_message_stream(
             context = ""
 
         try:
-            history = await _get_conversation_history(
+            history_context = await _get_history_context(
                 uuid.UUID(data.conversation_id),
                 data.query.strip(),
                 db,
             )
         except Exception:
-            history = []
+            try:
+                fallback = await _get_conversation_history(
+                    uuid.UUID(data.conversation_id),
+                    data.query.strip(),
+                    db,
+                )
+                history_context = _format_conversation_history(fallback)
+            except Exception:
+                history_context = "(No previous messages)"
         user_prompt = (
             f"Document context:\n{context}\n\n"
-            f"Conversation history:\n{_format_conversation_history(history)}\n\n"
+            f"Conversation history:\n{history_context}\n\n"
             f"Current question:\n{data.query.strip()}"
         )
 
@@ -135,7 +213,6 @@ async def chat_message_stream(
         for start in range(0, len(safe_answer), 400):
             yield f"data: {json.dumps({'event': 'token', 'content': safe_answer[start:start + 400]})}\n\n"
         full_answer = safe_answer
-        # store in semantic cache for future hits (best-effort, fail-open)
         try:
             await to_thread.run_sync(
                 semantic_cache.store,
