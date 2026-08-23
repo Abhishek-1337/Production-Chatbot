@@ -33,22 +33,33 @@ SUMMARY_QA_COUNT = 12
 SUMMARY_WINDOW_MESSAGES = SUMMARY_QA_COUNT * 2
 SUMMARY_MAX_CHARS = 12000
 
+async def _fetch_ordered_messages(
+    conversation_id: uuid.UUID,
+    current_query: str,
+    db: AsyncSession,
+    limit: int,
+) -> list[ChatMessage]:
+    """Shared fetch: get newest `limit` messages, return oldest->newest, strip pending current_query."""
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.conversation_id == conversation_id)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+    )
+    messages = list(reversed(result.scalars().all()))
+    if messages and messages[-1].role == "user" and messages[-1].content == current_query:
+        messages.pop()
+    return messages
+
+
 async def _get_conversation_history(
     conversation_id: uuid.UUID,
     current_query: str,
     db: AsyncSession,
 ) -> list[ChatMessage]:
-    result = await db.execute(
-        select(ChatMessage)
-        .where(ChatMessage.conversation_id == conversation_id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(MAX_HISTORY_MESSAGES + 1)
+    messages = await _fetch_ordered_messages(
+        conversation_id, current_query, db, MAX_HISTORY_MESSAGES + 1
     )
-
-    messages = list(reversed(result.scalars().all()))
-
-    if messages and messages[-1].role == "user" and messages[-1].content == current_query:
-        messages.pop()
     return messages[-MAX_HISTORY_MESSAGES:]
 
 
@@ -85,17 +96,12 @@ async def _get_history_context(
     db: AsyncSession,
 ) -> str:
 
-    fetch_limit = MAX_HISTORY_MESSAGES + SUMMARY_WINDOW_MESSAGES + 1
-    result = await db.execute(
-        select(ChatMessage)
-        .where(ChatMessage.conversation_id == conversation_id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(fetch_limit)
+    messages = await _fetch_ordered_messages(
+        conversation_id,
+        current_query,
+        db,
+        MAX_HISTORY_MESSAGES + SUMMARY_WINDOW_MESSAGES + 1,
     )
-    messages = list(reversed(result.scalars().all()))
-
-    if messages and messages[-1].role == "user" and messages[-1].content == current_query:
-        messages.pop()
 
     if not messages:
         return "(No previous messages)"
