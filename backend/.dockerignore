@@ -1,0 +1,13 @@
+__pycache__
+*.py[cod]
+*.pyo
+.venv
+.venv/
+uv.lock.bak
+.pytest_cache
+.git
+.gitignore
+.env
+chroma_db
+*.sqlite3
+.DS_Store
