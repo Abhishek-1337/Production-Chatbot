@@ -9,6 +9,7 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { ToastContainer, type ToastItem } from "./components/Toast";
 import { UploadOverlay } from "./components/UploadOverlay";
 import { Welcome } from "./components/Welcome";
+import AdminDashboard from "./pages/AdminDashboard";
 import type { Conversation, User } from "./types";
 import {
   errorMessage,
@@ -20,6 +21,7 @@ const TOKEN_KEY = "rag-token";
 const THEME_KEY = "rag-theme";
 
 function App() {
+  const isAdminRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
   const [token, setToken] = useState(
     () => localStorage.getItem(TOKEN_KEY) ?? "",
   );
@@ -419,6 +421,29 @@ function App() {
     );
   }
 
+  if (isAdminRoute) {
+    if (!user) {
+      // still loading user
+      return (
+        <div className="flex h-svh items-center justify-center bg-[var(--paper)]">
+          <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+        </div>
+      );
+    }
+    if (!user.is_admin) {
+      return (
+        <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] p-6 text-center">
+          <h1 className="text-xl font-semibold">403 — Admin access required</h1>
+          <p className="text-sm text-[var(--muted)]">Your account ({user.email}) is not an admin.</p>
+          <a href="/" className="rounded bg-[var(--navy)] px-4 py-2 text-sm text-white">
+            Back to chat
+          </a>
+        </div>
+      );
+    }
+    return <AdminDashboard />;
+  }
+
   return (
     <div className="flex h-svh min-w-0 overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
       <Sidebar
@@ -461,14 +486,19 @@ function App() {
               RAG / RESEARCH DESK
             </div>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
+            {user?.is_admin && (
+              <a
+                href="/admin"
+                className="rounded border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-medium hover:bg-[#eef1ec] dark:bg-[#1e323a] dark:hover:bg-[#22343c]"
+              >
+                Admin
+              </a>
+            )}
             <ThemeToggle
               isDark={isDark}
               onToggle={() => setIsDark((value) => !value)}
             />
-            {/* <span className="live-label">
-              <i /> SYSTEM READY
-            </span> */}
           </div>
         </header>
         {conversationLoading ? (

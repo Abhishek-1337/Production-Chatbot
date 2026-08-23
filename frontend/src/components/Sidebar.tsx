@@ -255,6 +255,11 @@ export function Sidebar({
             <small className="truncate text-[11px] text-[#899398] dark:text-[#9eaaa8]">
               {user?.email}
             </small>
+            {user?.is_admin && (
+              <a href="/admin" className="mt-1 text-[11px] font-medium text-[#7eb587] hover:underline">
+                Admin dashboard →
+              </a>
+            )}
           </div>
           <button
             className="grid place-items-center border-0 bg-transparent p-2 text-[var(--muted)] hover:text-[var(--ink)]"
