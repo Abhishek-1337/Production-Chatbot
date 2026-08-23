@@ -14,17 +14,23 @@ from services.input_guardrails import (
     mask_pii,
 )
 from services.retry_utils import retry_llm
+from services.token_usage_service import estimate_tokens, extract_usage_tokens, record_token_usage
 from api.v1.controllers.document import agent
 
 
 @retry_llm
-async def _run_agent_stream(prompt: str) -> str:
-    """Run LLM streaming with retry on 429/timeout/5xx. Retries transient failures."""
+async def _run_agent_stream(prompt: str) -> tuple[str, object | None]:
+    """Run LLM streaming with retry on 429/timeout/5xx. Returns (text, usage)."""
     full = ""
+    usage = None
     async with agent.run_stream(prompt) as result:
         async for chunk in result.stream_text():
             full += chunk
-    return full
+        try:
+            usage = result.usage()
+        except Exception:
+            usage = getattr(result, "usage", None)
+    return full, usage
 
 MAX_HISTORY_MESSAGES = 5
 MAX_MESSAGE_LENGTH = 4000
@@ -74,7 +80,7 @@ def _format_conversation_history(messages: list[ChatMessage]) -> str:
 
 
 @retry_llm
-async def _summarize_history(formatted_history: str) -> str:
+async def _summarize_history(formatted_history: str) -> tuple[str, object | None]:
     prompt = (
         f"Summarise the following conversation history concisely. "
         f"Preserve key facts, user intents, decisions, and assistant answers "
@@ -87,7 +93,12 @@ async def _summarize_history(formatted_history: str) -> str:
     output = getattr(result, "output", None)
     if output is None:
         output = getattr(result, "data", "")
-    return str(output).strip() if output else ""
+    usage = None
+    try:
+        usage = result.usage() if callable(getattr(result, "usage", None)) else getattr(result, "usage", None)
+    except Exception:
+        usage = None
+    return (str(output).strip() if output else ""), usage
 
 
 async def _get_history_context(
@@ -119,10 +130,16 @@ async def _get_history_context(
     formatted_recent = _format_conversation_history(recent_messages)
 
     try:
-        summary = await _summarize_history(formatted_older)
+        summary, _usage = await _summarize_history(formatted_older)
         if not summary:
             raise ValueError("Empty summary")
+        # usage for summary will be recorded by caller if needed; store for downstream
+        # We cannot log here without db/user context, so just return summary
+        # Caller (chat_message_stream) will handle logging if _usage is not None
+        # To avoid losing usage, we attach it via closure attribute
+        _get_history_context.last_summary_usage = _usage  # type: ignore
     except Exception:
+        _get_history_context.last_summary_usage = None  # type: ignore
         return (
             f"Earlier conversation (truncated, summarisation unavailable):\n"
             f"{formatted_older}\n\n"
@@ -149,6 +166,13 @@ async def chat_message_stream(
     if conversation is None:
         return
 
+    # helper to safely record usage without breaking stream
+    async def _safe_record(**kwargs):
+        try:
+            await record_token_usage(db, user_id=user_id, conversation_id=conversation.id, document_id=conversation.document_id, **kwargs)
+        except Exception:
+            pass
+
     try:
         try:
             cached_answer, similarity = await to_thread.run_sync(
@@ -161,15 +185,27 @@ async def chat_message_stream(
                 yield f"data: {json.dumps({'event': 'cached', 'similarity': similarity})}\n\n"
                 for start in range(0, len(cached_answer), 400):
                     yield f"data: {json.dumps({'event': 'token', 'content': cached_answer[start:start + 400]})}\n\n"
-                db.add(ChatMessage(
+                msg = ChatMessage(
                     document_id=conversation.document_id,
                     conversation_id=uuid.UUID(data.conversation_id),
                     role="assistant",
                     content=cached_answer,
-                ))
+                )
+                db.add(msg)
+                await db.flush()
+                # cached hits still log 0 tokens but mark as cached for analytics
+                await _safe_record(model="cache", source="llm", prompt_tokens=0, completion_tokens=0, chat_message_id=msg.id)
                 await db.commit()
                 yield f"data: {json.dumps({'event': 'done', 'cached': True})}\n\n"
                 return
+        except Exception:
+            pass
+
+        # --- embedding token logging (query embedding) ---
+        try:
+            # estimate tokens for query embedding before retrieval
+            emb_tokens = estimate_tokens(data.query.strip())
+            await _safe_record(model="all-MiniLM-L6-v2", source="embedding", prompt_tokens=emb_tokens, completion_tokens=0)
         except Exception:
             pass
 
@@ -189,6 +225,18 @@ async def chat_message_stream(
                 data.query.strip(),
                 db,
             )
+            # log summary tokens if summarization happened
+            try:
+                summary_usage = getattr(_get_history_context, "last_summary_usage", None)
+                if summary_usage is not None:
+                    pt, ct = extract_usage_tokens(summary_usage)
+                    if pt == 0 and ct == 0:
+                        # fallback estimate
+                        pt = estimate_tokens(history_context)
+                        ct = estimate_tokens(summary_usage) if isinstance(summary_usage, str) else 50
+                    await _safe_record(model="gpt-4o-mini", source="summary", prompt_tokens=pt, completion_tokens=ct)
+            except Exception:
+                pass
         except Exception:
             try:
                 fallback = await _get_conversation_history(
@@ -206,8 +254,18 @@ async def chat_message_stream(
         )
 
         full_answer = ""
+        llm_usage = None
         try:
-            full_answer = await _run_agent_stream(user_prompt)
+            full_answer, llm_usage = await _run_agent_stream(user_prompt)
+            # log LLM usage
+            try:
+                pt, ct = extract_usage_tokens(llm_usage)
+                if pt == 0 and ct == 0:
+                    pt = estimate_tokens(user_prompt)
+                    ct = estimate_tokens(full_answer)
+                await _safe_record(model="gpt-4o-mini", source="llm", prompt_tokens=pt, completion_tokens=ct)
+            except Exception:
+                pass
         except Exception:
             raise
 
