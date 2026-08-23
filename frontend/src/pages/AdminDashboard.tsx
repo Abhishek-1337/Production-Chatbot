@@ -12,6 +12,7 @@ import {
   Bar,
   Legend,
 } from "recharts";
+import { API_URL } from "../config";
 
 const TOKEN_KEY = "rag-token";
 
@@ -68,7 +69,7 @@ export default function AdminDashboard() {
     setError("");
     try {
       const qs = `start=${start}&end=${end}&source=${source}`;
-      const d1 = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1"}/admin/token-usage/daily?${qs}`, {
+      const d1 = await fetch(`${API_URL}/admin/token-usage/daily?${qs}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!d1.ok) {
@@ -78,14 +79,14 @@ export default function AdminDashboard() {
       const j1 = await d1.json();
       setDaily(j1.data);
 
-      const d2 = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1"}/admin/token-usage/top-users?${qs}&limit=10`, {
+      const d2 = await fetch(`${API_URL}/admin/token-usage/top-users?${qs}&limit=10`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!d2.ok) throw new Error("Top users failed");
       const j2 = await d2.json();
       setTopUsers(j2.data);
 
-      const d3 = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1"}/admin/token-usage/summary?source=${source}`, {
+      const d3 = await fetch(`${API_URL}/admin/token-usage/summary?source=${source}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (d3.ok) {
@@ -93,7 +94,7 @@ export default function AdminDashboard() {
         setSummary(j3);
       }
 
-      const d4 = await fetch(`${import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1"}/admin/token-usage/top-per-day?${qs}`, {
+      const d4 = await fetch(`${API_URL}/admin/token-usage/top-per-day?${qs}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (d4.ok) {

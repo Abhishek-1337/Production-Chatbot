@@ -1,6 +1,7 @@
 import type { Conversation, User } from "./types";
+import { API_URL } from "./config";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
+export { API_URL };
 
 export class ApiError extends Error {
   readonly status: number;
