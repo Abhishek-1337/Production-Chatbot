@@ -13,6 +13,7 @@ from models.user import User
 from models.document import Document
 from models.chat_message import ChatMessage
 from models.conversation import Conversation
+from models.token_usage import TokenUsage
 
 config = context.config
 
