@@ -124,17 +124,17 @@ function ConversationCard({
         {menuOpen && (
           <div
             role="menu"
-            className="absolute right-0 top-full z-20 mt-1 w-44 border border-[var(--line)] bg-white py-1 shadow-lg dark:bg-[#1b2a31]"
+            className="absolute right-1 top-7 z-20 mt-1 border border-[var(--line)] bg-white py-1 shadow-lg dark:bg-[#1b2a31] text-sm font-medium"
           >
             {isDeleting ? (
-              <span className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--muted)]">
+              <span className="flex items-center gap-2 px-3 py-1 text-xs text-[var(--muted)]">
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
                 Deleting...
               </span>
             ) : (
               <button
                 role="menuitem"
-                className="flex w-full items-center gap-2 border-0 bg-transparent px-3 py-2 text-left text-xs font-medium text-[#b34e3e] transition hover:bg-[#fbeeed] dark:hover:bg-[#33262a]"
+                className="flex items-center gap-2 border-0 bg-transparent px-3 py-1 text-left font-medium text-[#b34e3e] transition hover:bg-[#fbeeed] dark:hover:bg-[#33262a]"
                 onClick={(event) => {
                   event.stopPropagation();
                   setMenuOpen(false);
@@ -142,7 +142,7 @@ function ConversationCard({
                 }}
               >
                 <Icon name="trash" size={14} />
-                Delete conversation
+                Delete 
               </button>
             )}
           </div>
