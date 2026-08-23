@@ -121,6 +121,10 @@ Both the user query and the streamed answer are persisted to `chat_messages`.
 
 ## Recent Changes
 
+### 2026-08-23 — Delete feedback UX fix
+
+- **fix(ui): show deleting state immediately on conversation delete** (`frontend/src/components/Sidebar.tsx:75-152`, `frontend/src/App.tsx:214-237`) — `ConversationCard` previously only rendered `Deleting…` inside the dropdown menu (`menuOpen && isDeleting`), which closed on `onDelete` (`setMenuOpen(false)`) so no feedback was visible during the async `api.deleteConversation` call. Fixed by rendering deleting state at the card level: `aria-busy` + `opacity-60`, left icon → spinner, inline `Deleting…` label next to title (alongside existing `Loading…` for `isSelecting`), and right-side spinner replacing the three-dot menu while `deletingId === conversation.id`; disabled `onSelect`/menu actions during delete. Added `loading` toast in `App.deleteConversation()` (mirroring `upload`) — `Deleting "title"…` → success/error — so global feedback is visible even when sidebar is collapsed.
+
 ### 2026-08-23 — Chat history summarization & DRY refactor
 
 - **feat(chat): summarize history when exceeding 5 messages** (`backend/api/v1/controllers/chat_message.py:29`, `backend/api/v1/controllers/chat_message.py:79-155`) — `MAX_HISTORY_MESSAGES` reduced `12 → 5`; new `SUMMARY_QA_COUNT=12` / `SUMMARY_WINDOW_MESSAGES=24` / `SUMMARY_MAX_CHARS=12000`; added `@retry_llm _summarize_history()` and `_get_history_context()` (summary + verbatim recent 5, fail-open to truncated history); `chat_message_stream()` now uses `_get_history_context()` with fallback to `_get_conversation_history()`/`_format_conversation_history()`.
