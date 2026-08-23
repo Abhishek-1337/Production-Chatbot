@@ -8,9 +8,22 @@ import os
 
 load_dotenv()
 
-_DATABASE_URL = os.getenv("DATABASE_URL")
-if not _DATABASE_URL:
+def _normalize_db_url(url: str) -> str:
+    """Ensure URL uses asyncpg driver for the app runtime."""
+    if not url:
+        return url
+    # strip ?sslmode=require query — handled via connect_args for asyncpg
+    # keep it for psycopg2 compatibility but asyncpg ignores it; we normalize to avoid double ssl handling
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url
+
+_raw_url = os.getenv("DATABASE_URL")
+if not _raw_url:
     raise RuntimeError("DATABASE_URL is not set — check backend/.env or docker-compose environment")
+_DATABASE_URL = _normalize_db_url(_raw_url)
 
 _ssl_mode = os.getenv("DATABASE_SSL", "").lower().strip()
 if _ssl_mode in ("require", "true", "1"):

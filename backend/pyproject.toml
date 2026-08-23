@@ -19,6 +19,7 @@ dependencies = [
     "doc2docx>=0.2.0",
     "sqlalchemy>=2.0.51",
     "asyncpg>=0.31.0",
+    "psycopg2-binary>=2.9.0",
     "alembic>=1.19.0",
     "greenlet>=3.5.4",
     "tenacity>=9.0.0",
