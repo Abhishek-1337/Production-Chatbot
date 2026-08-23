@@ -73,16 +73,20 @@ function ConversationCard({
 
   return (
     <div
-      className={`group relative flex w-full gap-3 border-l-2 px-3 py-3 transition hover:bg-[#e4e9e4] dark:hover:bg-[#22343c] ${isActive ? "border-l-[var(--amber)] bg-[#e4e9e4] dark:bg-[#22343c]" : "border-l-transparent"}`}
+      aria-busy={isDeleting}
+      className={`group relative flex w-full gap-3 border-l-2 px-3 py-3 transition hover:bg-[#e4e9e4] dark:hover:bg-[#22343c] ${isDeleting ? "opacity-60" : ""} ${isActive ? "border-l-[var(--amber)] bg-[#e4e9e4] dark:bg-[#22343c]" : "border-l-transparent"}`}
     >
       <button
         className="flex min-w-0 flex-1 gap-3 border-0 bg-transparent p-0 text-left text-[var(--ink)] disabled:opacity-60"
         onClick={() => onSelect(conversation)}
-        disabled={isSelecting}
+        disabled={isDeleting || isSelecting}
       >
         <span className="grid h-7 w-7 shrink-0 place-items-center border border-[var(--line)] bg-[#f7f8f5] text-[#7c898c] dark:bg-[#1d2c33] dark:text-[#a3b2b0]">
-          {isSelecting ? (
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+          {isDeleting || isSelecting ? (
+            <span
+              className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]"
+              aria-label={isDeleting ? "Deleting" : "Loading"}
+            />
           ) : (
             <Icon name="file" size={16} />
           )}
@@ -90,9 +94,9 @@ function ConversationCard({
         <span className="flex min-w-0 flex-col gap-1">
           <strong className="flex items-center gap-2 truncate text-[13px] font-semibold">
             {conversation.title}
-            {isSelecting && (
+            {(isDeleting || isSelecting) && (
               <span className="shrink-0 text-[10px] font-medium tracking-wide text-[var(--amber)]">
-                Loading…
+                {isDeleting ? "Deleting…" : "Loading…"}
               </span>
             )}
           </strong>
@@ -104,48 +108,53 @@ function ConversationCard({
       </button>
 
       <div className="relative shrink-0" ref={menuRef}>
-        <button
-          className={`grid place-items-center border-0 bg-transparent p-1.5 text-[var(--muted)] opacity-0 transition hover:text-[var(--ink)] focus-visible:opacity-100 group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            setMenuOpen((value) => !value);
-          }}
-          aria-label={`Options for ${conversation.title}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-        >
-          {/* three vertical dots */}
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <circle cx="12" cy="5" r="2" />
-            <circle cx="12" cy="12" r="2" />
-            <circle cx="12" cy="19" r="2" />
-          </svg>
-        </button>
-        {menuOpen && (
-          <div
-            role="menu"
-            className="absolute right-1 top-7 z-20 mt-1 border border-[var(--line)] bg-white py-1 shadow-lg dark:bg-[#1b2a31] text-sm font-medium"
+        {isDeleting ? (
+          <span
+            className="grid place-items-center p-1.5 text-[var(--muted)]"
+            aria-label="Deleting conversation"
           >
-            {isDeleting ? (
-              <span className="flex items-center gap-2 px-3 py-1 text-xs text-[var(--muted)]">
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
-                Deleting...
-              </span>
-            ) : (
-              <button
-                role="menuitem"
-                className="flex items-center gap-2 border-0 bg-transparent px-3 py-1 text-left font-medium text-[#b34e3e] transition hover:bg-[#fbeeed] dark:hover:bg-[#33262a]"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setMenuOpen(false);
-                  onDelete(conversation);
-                }}
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+          </span>
+        ) : (
+          <>
+            <button
+              className={`grid place-items-center border-0 bg-transparent p-1.5 text-[var(--muted)] opacity-0 transition hover:text-[var(--ink)] focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40 ${menuOpen ? "opacity-100" : ""}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setMenuOpen((value) => !value);
+              }}
+              aria-label={`Options for ${conversation.title}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              disabled={isSelecting}
+            >
+              {/* three vertical dots */}
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="12" cy="5" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="12" cy="19" r="2" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-1 top-7 z-20 mt-1 border border-[var(--line)] bg-white py-1 shadow-lg dark:bg-[#1b2a31] text-sm font-medium"
               >
-                <Icon name="trash" size={14} />
-                Delete 
-              </button>
+                <button
+                  role="menuitem"
+                  className="flex items-center gap-2 border-0 bg-transparent px-3 py-1 text-left font-medium text-[#b34e3e] transition hover:bg-[#fbeeed] dark:hover:bg-[#33262a]"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setMenuOpen(false);
+                    onDelete(conversation);
+                  }}
+                >
+                  <Icon name="trash" size={14} />
+                  Delete
+                </button>
+              </div>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

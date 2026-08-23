@@ -215,6 +215,10 @@ function App() {
     if (deletingId) return;
     setDeletingId(conversation.id);
     setError("");
+    const deletingToastId = showToast(
+      `Deleting “${conversation.title}”…`,
+      "loading",
+    );
     try {
       await api.deleteConversation(conversation.id);
       setConversations((items) =>
@@ -226,8 +230,10 @@ function App() {
         setNextCursor(null);
         updateConversationUrl(null, true);
       }
+      setToasts((prev) => prev.filter((t) => t.id !== deletingToastId));
       showToast(`Deleted “${conversation.title}”.`, "success");
     } catch (err) {
+      setToasts((prev) => prev.filter((t) => t.id !== deletingToastId));
       const msg = errorMessage(err, "Could not delete conversation");
       setError(msg);
       showToast(msg, "error");
