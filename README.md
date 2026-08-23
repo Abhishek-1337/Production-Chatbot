@@ -12,7 +12,8 @@ A production-grade RAG (Retrieval-Augmented Generation) chatbot backend built wi
 - **Async SQLAlchemy + PostgreSQL** — Alembic-managed schema: `users`, `documents`, `chat_messages` (stores both user query and assistant reply).
 - **Guardrails (partial)** — NeMo Guardrails self-check prompt-injection & content moderation rails are configured and wired into the legacy `/chat` endpoint.
 - **Prompt management** — versioned prompt templates (`general_chat`, `rag`) in `services/prompt_management.py`.
-- **Clean layered architecture** — `Routes → Controllers → Services → Database`, Pydantic schemas, Alembic migrations.
+- **Conversation history management** — `MAX_HISTORY_MESSAGES=5` verbatim window; when history exceeds 5, the preceding up to 12 Q&A (24 messages) are summarized via LLM (`_summarize_history` + `_get_history_context` in `backend/api/v1/controllers/chat_message.py:29-155`) with `retry_llm` and fail-open fallback, keeping prompts compact and grounded.
+- **Clean layered architecture** — `Routes → Controllers → Services → Database`, Pydantic schemas, Alembic migrations. Deduplicated history fetching via shared `_fetch_ordered_messages()` helper (`chat_message.py:39`).
 
 ---
 
@@ -98,6 +99,8 @@ Both the user query and the streamed answer are persisted to `chat_messages`.
 - [x] **Streaming enabled for all chat endpoints** — SSE token streaming via pydantic-ai `run_stream`
 - [x] **API keys stored in environment variables, not code** — `.env` + `.env.example`, `load_dotenv` (`OPENAI_API_KEY`, `DATABASE_URL`, `JWT_SECRET_KEY`)
 - [x] **Per-user data isolation** — retrieval and ownership checks filtered by `user_id`
+- [x] **Exponential backoff on all LLM API calls** — `tenacity` `retry_llm` / `retry_embedding` / `retry_vector_*` in `services/retry_utils.py` (LLM 429/timeout/5xx, fail-open elsewhere)
+- [x] **Conversation history summarization** — `chat_message.py:29` window `5` + LLM summary of last `12` Q&A (`chat_message.py:79-155`) to bound prompt tokens
 
 ### In Progress 🟡
 - [ ] **Input guardrails active (prompt injection, PII)** — config exists (`self_check_input`) and runs on legacy `/chat`; **not yet applied to the SSE RAG endpoint**
@@ -108,13 +111,21 @@ Both the user query and the streamed answer are persisted to `chat_messages`.
 
 ### Not Started ⬜
 - [ ] **Rate limiting per user (10–50 req/min default)**
-- [ ] **Semantic cache configured and tested**
-- [ ] **Exponential backoff on all LLM API calls**
 - [ ] **Fallback model chain configured**
 - [ ] **Cost tracking per request and per user**
 - [ ] **Max token limits on input and output**
 - [ ] **Timeout on all external calls (30s default)**
 - [ ] **Load test with 100 concurrent users passing**
+
+---
+
+## Recent Changes
+
+### 2026-08-23 — Chat history summarization & DRY refactor
+
+- **feat(chat): summarize history when exceeding 5 messages** (`backend/api/v1/controllers/chat_message.py:29`, `backend/api/v1/controllers/chat_message.py:79-155`) — `MAX_HISTORY_MESSAGES` reduced `12 → 5`; new `SUMMARY_QA_COUNT=12` / `SUMMARY_WINDOW_MESSAGES=24` / `SUMMARY_MAX_CHARS=12000`; added `@retry_llm _summarize_history()` and `_get_history_context()` (summary + verbatim recent 5, fail-open to truncated history); `chat_message_stream()` now uses `_get_history_context()` with fallback to `_get_conversation_history()`/`_format_conversation_history()`.
+- **refactor(chat): deduplicate conversation history fetching** (`backend/api/v1/controllers/chat_message.py:39`) — extracted shared `async def _fetch_ordered_messages(conversation_id, current_query, db, limit)` (single `select … order_by(desc).limit` + `reversed` + `current_query` pop); `_get_conversation_history()` and `_get_history_context()` now delegate, removing duplicated 9-line fetch blocks.
+- **docs: update README** — documented history window + summarization and DRY helper.
 
 ---
 
