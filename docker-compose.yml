@@ -7,18 +7,8 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
-    environment:
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in backend/.env for cloud DB}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
-      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-360}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      SEMANTIC_CACHE_ENABLED: ${SEMANTIC_CACHE_ENABLED:-true}
-      SEMANTIC_CACHE_THRESHOLD: ${SEMANTIC_CACHE_THRESHOLD:-0.93}
-      SEMANTIC_CACHE_EMBEDDING_MODEL: ${SEMANTIC_CACHE_EMBEDDING_MODEL:-text-embedding-3-small}
-      CHROMA_DB_PATH: /app/chroma_db
     ports:
-      - "${API_PORT:-8001}:8000"
+      - "8001:8000"
     volumes:
       - chroma_data:/app/chroma_db
     healthcheck:
