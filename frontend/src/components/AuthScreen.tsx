@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Icon } from "./Icon";
 import { ThemeToggle } from "./ThemeToggle";
@@ -19,6 +20,12 @@ export function AuthScreen({
   isDark,
   onThemeToggle,
 }: AuthScreenProps) {
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    setShowPassword(false);
+  }, [mode]);
+
   return (
     <main className="relative grid min-h-svh place-items-center bg-[var(--navy)] p-5 text-white">
       <div className="absolute right-7 top-7">
@@ -64,13 +71,25 @@ export function AuthScreen({
           </label>
           <label className="grid gap-2 font-mono text-[10px] tracking-[1px] text-[#718083] dark:text-[#aab8b5]">
             Password
-            <input
-              name="password"
-              type="password"
-              required
-              placeholder="••••••••"
-              className="border border-[#d4dcd7] bg-white p-[13px] font-sans text-sm text-[var(--ink)] outline-none focus:border-[#9bad9e] dark:border-[#405158] dark:bg-[#1d2d34]"
-            />
+            <div className="relative">
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                placeholder="••••••••"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                className="w-full border border-[#d4dcd7] bg-white p-[13px] pr-11 font-sans text-sm text-[var(--ink)] outline-none focus:border-[#9bad9e] dark:border-[#405158] dark:bg-[#1d2d34]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+                className="absolute inset-y-0 right-0 grid w-11 place-items-center border-0 bg-transparent p-0 text-[#718083] hover:text-[var(--ink)] dark:text-[#aab8b5] dark:hover:text-white"
+              >
+                <Icon name={showPassword ? "eyeOff" : "eye"} size={18} />
+              </button>
+            </div>
           </label>
           <button
             className="mt-2 inline-flex w-full items-center justify-center gap-2 border-0 bg-[var(--navy)] px-[18px] py-3.5 font-semibold text-white transition hover:-translate-y-px hover:bg-[#24475d] dark:bg-[#d8e4e1] dark:text-[#15242b] dark:hover:bg-[#f0f6f2]"
