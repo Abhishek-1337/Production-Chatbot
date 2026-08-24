@@ -21,7 +21,17 @@ const TOKEN_KEY = "rag-token";
 const THEME_KEY = "rag-theme";
 
 function App() {
-  const isAdminRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/admin");
+  const [pathname, setPathname] = useState(
+    () => (typeof window !== "undefined" ? window.location.pathname : "/"),
+  );
+  const isAdminRoute = pathname.startsWith("/admin");
+  const navigate = (to: string) => {
+    if (typeof window === "undefined") return;
+    if (window.location.pathname !== to) {
+      window.history.pushState(null, "", to);
+      setPathname(to);
+    }
+  };
   const [token, setToken] = useState(
     () => localStorage.getItem(TOKEN_KEY) ?? "",
   );
@@ -73,6 +83,32 @@ function App() {
     document.documentElement.dataset.theme = isDark ? "dark" : "light";
     localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
   }, [isDark]);
+
+  // Keep SPA route in sync with browser history (fixes /admin 404 in production without rewrite + back/forward)
+  useEffect(() => {
+    const onPopState = () => setPathname(window.location.pathname);
+    window.addEventListener("popstate", onPopState);
+
+    // Patch pushState/replaceState so programmatic navigations also update state
+    const origPush = window.history.pushState.bind(window.history);
+    const origReplace = window.history.replaceState.bind(window.history);
+    window.history.pushState = (...args) => {
+      const ret = (origPush as any)(...args);
+      setPathname(window.location.pathname);
+      return ret;
+    };
+    window.history.replaceState = (...args) => {
+      const ret = (origReplace as any)(...args);
+      setPathname(window.location.pathname);
+      return ret;
+    };
+
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.history.pushState = origPush;
+      window.history.replaceState = origReplace;
+    };
+  }, []);
 
   // Helper to load conversation metadata + first page of messages
   const loadConversationWithMessages = async (
@@ -491,13 +527,14 @@ function App() {
         <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] p-6 text-center">
           <h1 className="text-xl font-semibold">403 — Admin access required</h1>
           <p className="text-sm text-[var(--muted)]">Your account ({user.email}) is not an admin.</p>
-          <a href="/" className="rounded bg-[var(--navy)] px-4 py-2 text-sm text-white">
+          <button onClick={() => navigate("/")} className="rounded bg-[var(--navy)] px-4 py-2 text-sm text-white">
             Back to chat
-          </a>
+          </button>
+          <p className="text-xs text-[var(--muted)]">Tip: Run <code>python scripts/make_admin.py {user.email}</code> on the server or <code>UPDATE users SET is_admin=true WHERE email='{user.email}'</code> and re-login.</p>
         </div>
       );
     }
-    return <AdminDashboard />;
+    return <AdminDashboard onNavigate={navigate} />;
   }
 
   return (
@@ -523,6 +560,7 @@ function App() {
         onSelect={selectConversation}
         onDelete={(conversation) => void deleteConversation(conversation)}
         onSignOut={signOut}
+        onNavigate={navigate}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-4 border-b border-[var(--line)] px-[18px] sm:px-[42px] h-[71px]">
@@ -551,12 +589,12 @@ function App() {
           )}
           <div className="ml-auto flex items-center gap-3">
             {user?.is_admin && (
-              <a
-                href="/admin"
+              <button
+                onClick={() => navigate("/admin")}
                 className="rounded border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-medium hover:bg-[#eef1ec] dark:bg-[#1e323a] dark:hover:bg-[#22343c]"
               >
                 Admin
-              </a>
+              </button>
             )}
             <ThemeToggle
               isDark={isDark}
