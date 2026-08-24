@@ -2,13 +2,14 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.chat_message import ChatMessage
 from models.conversation import Conversation
 from models.document import Document
+from models.token_usage import TokenUsage
 from models.user import User
 from services import ingest, parser
 
@@ -88,6 +89,8 @@ async def delete_conversation(
     """
     Deletes the conversation and cascades to its chat messages.
     Ownership enforced by user_id filter.
+    Also cleans up token_usage, document, chroma vectors and semantic cache
+    that would otherwise block the DELETE via FK constraints.
     """
     try:
         conv_uuid = uuid.UUID(conversation_id)
@@ -103,7 +106,56 @@ async def delete_conversation(
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    document_id = conversation.document_id
+
+
+    await db.execute(delete(TokenUsage).where(TokenUsage.conversation_id == conv_uuid))
+    subq = select(ChatMessage.id).where(ChatMessage.conversation_id == conv_uuid)
+    await db.execute(delete(TokenUsage).where(TokenUsage.chat_message_id.in_(subq)))
+    await db.flush()
+
+
+    await db.execute(delete(ChatMessage).where(ChatMessage.conversation_id == conv_uuid))
+    await db.flush()
+
     await db.delete(conversation)
+    await db.flush()
+
+    remaining = await db.execute(
+        select(func.count()).select_from(Conversation).where(Conversation.document_id == document_id)
+    )
+    if remaining.scalar_one() == 0:
+  
+        await db.execute(delete(TokenUsage).where(TokenUsage.document_id == document_id))
+        doc_result = await db.execute(select(Document).where(Document.id == document_id))
+        doc = doc_result.scalar_one_or_none()
+        if doc is not None:
+            await db.delete(doc)
+            await db.flush()
+
+        try:
+            from pathlib import Path
+            import chromadb
+
+            chroma_path = str(Path(__file__).resolve().parents[3] / "chroma_db")
+            client = chromadb.PersistentClient(path=chroma_path)
+            try:
+                col = client.get_collection("documents")
+                data = col.get(where={"document_id": str(document_id)}, include=[])
+                ids = data.get("ids") or []
+                if ids:
+                    col.delete(ids=ids)
+            except Exception:
+                pass
+            try:
+                from services.semantic_cache import clear_scope
+
+                clear_scope(user_id=str(user.id), document_id=str(document_id))
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     await db.commit()
 
 
