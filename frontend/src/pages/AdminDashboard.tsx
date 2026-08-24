@@ -12,6 +12,7 @@ import {
   Bar,
   Legend,
 } from "recharts";
+import { Link } from "react-router-dom";
 import { API_URL } from "../config";
 
 const TOKEN_KEY = "rag-token";
@@ -48,7 +49,7 @@ function formatDate(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function AdminDashboard({ onNavigate }: { onNavigate?: (to: string) => void }) {
+export default function AdminDashboard() {
   const [start, setStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 29);
@@ -118,15 +119,9 @@ export default function AdminDashboard({ onNavigate }: { onNavigate?: (to: strin
       <div className="mx-auto max-w-[1100px]">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <h1 className="text-2xl font-semibold">Admin — Token Usage</h1>
-          {onNavigate ? (
-            <button onClick={() => onNavigate("/")} className="text-sm text-[var(--muted)] hover:text-[var(--ink)] underline">
-              Back to chat
-            </button>
-          ) : (
-            <a href="/" className="text-sm text-[var(--muted)] hover:text-[var(--ink)] underline">
-              Back to chat
-            </a>
-          )}
+          <Link to="/" className="text-sm text-[var(--muted)] hover:text-[var(--ink)] underline">
+            Back to chat
+          </Link>
         </div>
 
         <div className="flex flex-wrap gap-3 items-end mb-6 bg-white/60 dark:bg-[#1a2a30]/60 p-4 rounded-xl border border-[var(--line)]">

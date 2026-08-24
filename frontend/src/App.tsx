@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { Routes, Route, Navigate, useLocation, useNavigate, Link } from "react-router-dom";
 import { ApiError, authenticate, createApi, readAssistantStream } from "./api";
 import { AuthScreen } from "./components/AuthScreen";
 import { ChatView } from "./components/ChatView";
@@ -11,30 +12,21 @@ import { UploadOverlay } from "./components/UploadOverlay";
 import { Welcome } from "./components/Welcome";
 import AdminDashboard from "./pages/AdminDashboard";
 import type { Conversation, User } from "./types";
-import {
-  errorMessage,
-  getConversationIdFromUrl,
-  updateConversationUrl,
-} from "./utils";
+import { errorMessage } from "./utils";
 
 const TOKEN_KEY = "rag-token";
 const THEME_KEY = "rag-theme";
 
-function App() {
-  const [pathname, setPathname] = useState(
-    () => (typeof window !== "undefined" ? window.location.pathname : "/"),
-  );
-  const isAdminRoute = pathname.startsWith("/admin");
-  const navigate = (to: string) => {
-    if (typeof window === "undefined") return;
-    if (window.location.pathname !== to) {
-      window.history.pushState(null, "", to);
-      setPathname(to);
-    }
-  };
-  const [token, setToken] = useState(
-    () => localStorage.getItem(TOKEN_KEY) ?? "",
-  );
+function getConversationIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/conversations\/([^/]+)\/?$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function AppRoutes() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? "");
   const [user, setUser] = useState<User | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
@@ -44,9 +36,7 @@ function App() {
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [isDark, setIsDark] = useState(
-    () => localStorage.getItem(THEME_KEY) === "dark",
-  );
+  const [isDark, setIsDark] = useState(() => localStorage.getItem(THEME_KEY) === "dark");
   const fileInput = useRef<HTMLInputElement>(null);
   const api = createApi(token);
   const [authLoading, setAuthLoading] = useState(() => !!token);
@@ -62,14 +52,9 @@ function App() {
   const [uploadFileName, setUploadFileName] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const dismissToast = (id: number) =>
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const dismissToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  const showToast = (
-    message: string,
-    type: ToastItem["type"] = "info",
-    durationMs?: number,
-  ) => {
+  const showToast = (message: string, type: ToastItem["type"] = "info", durationMs?: number) => {
     const id = Date.now() + Math.floor(Math.random() * 1000);
     setToasts((prev) => [...prev, { id, message, type }]);
     if (type !== "loading") {
@@ -84,31 +69,10 @@ function App() {
     localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
   }, [isDark]);
 
-  // Keep SPA route in sync with browser history (fixes /admin 404 in production without rewrite + back/forward)
-  useEffect(() => {
-    const onPopState = () => setPathname(window.location.pathname);
-    window.addEventListener("popstate", onPopState);
-
-    // Patch pushState/replaceState so programmatic navigations also update state
-    const origPush = window.history.pushState.bind(window.history);
-    const origReplace = window.history.replaceState.bind(window.history);
-    window.history.pushState = (...args) => {
-      const ret = (origPush as any)(...args);
-      setPathname(window.location.pathname);
-      return ret;
-    };
-    window.history.replaceState = (...args) => {
-      const ret = (origReplace as any)(...args);
-      setPathname(window.location.pathname);
-      return ret;
-    };
-
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-      window.history.pushState = origPush;
-      window.history.replaceState = origReplace;
-    };
-  }, []);
+  const updateConversationUrl = (id: string | null, replace = false) => {
+    const to = id ? `/conversations/${encodeURIComponent(id)}` : "/";
+    navigate(to, { replace });
+  };
 
   // Helper to load conversation metadata + first page of messages
   const loadConversationWithMessages = async (
@@ -146,7 +110,7 @@ function App() {
       .then(async ([me, chats]) => {
         setUser(me);
         setConversations(chats);
-        const conversationId = getConversationIdFromUrl();
+        const conversationId = getConversationIdFromPath(location.pathname);
         const conversation = chats.find((item) => item.id === conversationId);
         if (conversationId && conversation) {
           setConversationLoading(true);
@@ -155,14 +119,14 @@ function App() {
             const full = await loadConversationWithMessages(client, conversation.id);
             setActive(full);
           } catch (err) {
-            updateConversationUrl(null, true);
+            navigate("/", { replace: true });
             setError(errorMessage(err, "Could not open conversation"));
           } finally {
             setConversationLoading(false);
             setSelectingId(null);
           }
         } else if (conversationId) {
-          updateConversationUrl(null, true);
+          navigate("/", { replace: true });
         }
       })
       .catch((err) => {
@@ -179,19 +143,24 @@ function App() {
         setConversationsLoading(false);
         setAuthLoading(false);
       });
+    // only run on token change (location read once on mount)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // React to SPA route changes (back/forward, Link navigation) to load conversation
   useEffect(() => {
-    if (!token) return;
-    const handlePopState = async () => {
-      const conversationId = getConversationIdFromUrl();
-      if (!conversationId) {
-        setActive(null);
-        setHasMore(false);
-        setNextCursor(null);
-        return;
-      }
+    if (!token || !user) return;
+    const conversationId = getConversationIdFromPath(location.pathname);
+    if (!conversationId) {
+      setActive(null);
+      setHasMore(false);
+      setNextCursor(null);
+      return;
+    }
+    // Avoid reloading if already active
+    if (active?.id === conversationId) return;
 
+    const load = async () => {
       setConversationLoading(true);
       setSelectingId(conversationId);
       setError("");
@@ -200,7 +169,7 @@ function App() {
         const full = await loadConversationWithMessages(client, conversationId);
         setActive(full);
       } catch {
-        updateConversationUrl(null, true);
+        navigate("/", { replace: true });
         setActive(null);
         setError("Could not open conversation");
       } finally {
@@ -208,10 +177,9 @@ function App() {
         setSelectingId(null);
       }
     };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [token]);
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, token, user]);
 
   const selectConversation = async (conversation: Conversation) => {
     if (authLoading || !user) {
@@ -275,20 +243,15 @@ function App() {
     if (deletingId) return;
     setDeletingId(conversation.id);
     setError("");
-    const deletingToastId = showToast(
-      `Deleting “${conversation.title}”…`,
-      "loading",
-    );
+    const deletingToastId = showToast(`Deleting “${conversation.title}”…`, "loading");
     try {
       await api.deleteConversation(conversation.id);
-      setConversations((items) =>
-        items.filter((item) => item.id !== conversation.id),
-      );
+      setConversations((items) => items.filter((item) => item.id !== conversation.id));
       if (active?.id === conversation.id) {
         setActive(null);
         setHasMore(false);
         setNextCursor(null);
-        updateConversationUrl(null, true);
+        navigate("/", { replace: true });
       }
       setToasts((prev) => prev.filter((t) => t.id !== deletingToastId));
       showToast(`Deleted “${conversation.title}”.`, "success");
@@ -311,10 +274,7 @@ function App() {
     setUploading(true);
     setUploadFileName(file.name);
     setError("");
-    const loadingToastId = showToast(
-      `Uploading “${file.name}” — parsing & indexing…`,
-      "loading",
-    );
+    const loadingToastId = showToast(`Uploading “${file.name}” — parsing & indexing…`, "loading");
     try {
       const conversation = await api.upload(file);
       // upload response is metadata-only; ensure messages empty and pagination reset
@@ -394,9 +354,7 @@ function App() {
             ? {
                 ...current,
                 messages: (current.messages ?? []).map((message) =>
-                  message.id === answerId
-                    ? { ...message, content: assistant }
-                    : message,
+                  message.id === answerId ? { ...message, content: assistant } : message,
                 ),
               }
             : current,
@@ -406,11 +364,7 @@ function App() {
         throw new Error("The assistant returned an empty answer.");
       }
       setConversations((items) =>
-        items.map((item) =>
-          item.id === conversationId
-            ? { ...item, updated_at: new Date().toISOString() }
-            : item,
-        ),
+        items.map((item) => (item.id === conversationId ? { ...item, updated_at: new Date().toISOString() } : item)),
       );
     } catch (err) {
       setError(errorMessage(err, "Message failed"));
@@ -428,11 +382,7 @@ function App() {
 
         return {
           ...current,
-          messages: hasAnswer
-            ? messages.map((message) =>
-                message.id === answerId ? failedAnswer : message,
-              )
-            : [...messages, failedAnswer],
+          messages: hasAnswer ? messages.map((message) => (message.id === answerId ? failedAnswer : message)) : [...messages, failedAnswer],
         };
       });
     } finally {
@@ -448,10 +398,7 @@ function App() {
   const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
-      const newToken = await authenticate(
-        authMode,
-        new FormData(event.currentTarget),
-      );
+      const newToken = await authenticate(authMode, new FormData(event.currentTarget));
       localStorage.setItem(TOKEN_KEY, newToken);
       setAuthLoading(true);
       setToken(newToken);
@@ -471,9 +418,10 @@ function App() {
     setConversationsLoading(false);
     setConversationLoading(false);
     setSelectingId(null);
-    updateConversationUrl(null, true);
+    navigate("/", { replace: true });
   };
 
+  // --- Auth guards ---
   if (!token) {
     return (
       <AuthScreen
@@ -490,8 +438,6 @@ function App() {
     );
   }
 
-  // Auth gate: don't render workspace / enable uploads/chat until session verified.
-  // This prevents the race where token exists but /auth/me hasn't resolved yet.
   if (authLoading) {
     return (
       <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] px-6 text-center">
@@ -505,7 +451,6 @@ function App() {
   }
 
   if (!user) {
-    // Token present but user failed to load for non-401 reason — force re-login
     return (
       <AuthScreen
         mode={authMode}
@@ -521,21 +466,171 @@ function App() {
     );
   }
 
-  if (isAdminRoute) {
-    if (!user.is_admin) {
-      return (
-        <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] p-6 text-center">
-          <h1 className="text-xl font-semibold">403 — Admin access required</h1>
-          <p className="text-sm text-[var(--muted)]">Your account ({user.email}) is not an admin.</p>
-          <button onClick={() => navigate("/")} className="rounded bg-[var(--navy)] px-4 py-2 text-sm text-white">
-            Back to chat
-          </button>
-          <p className="text-xs text-[var(--muted)]">Tip: Run <code>python scripts/make_admin.py {user.email}</code> on the server or <code>UPDATE users SET is_admin=true WHERE email='{user.email}'</code> and re-login.</p>
-        </div>
-      );
-    }
-    return <AdminDashboard onNavigate={navigate} />;
-  }
+  // --- Protected routes ---
+  return (
+    <Routes>
+      <Route
+        path="/admin"
+        element={
+          !user.is_admin ? (
+            <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] p-6 text-center">
+              <h1 className="text-xl font-semibold">403 — Admin access required</h1>
+              <p className="text-sm text-[var(--muted)]">Your account ({user.email}) is not an admin.</p>
+              <Link to="/" className="rounded bg-[var(--navy)] px-4 py-2 text-sm text-white">
+                Back to chat
+              </Link>
+              <p className="text-xs text-[var(--muted)]">
+                Tip: Run <code>python scripts/make_admin.py {user.email}</code> on the server or{" "}
+                <code>UPDATE users SET is_admin=true WHERE email='{user.email}'</code> and re-login.
+              </p>
+            </div>
+          ) : (
+            <AdminDashboard />
+          )
+        }
+      />
+      <Route
+        path="/conversations/:id"
+        element={
+          <ChatLayout
+            conversations={conversations}
+            active={active}
+            user={user}
+            sidebarOpen={sidebarOpen}
+            uploading={uploading}
+            deletingId={deletingId}
+            conversationsLoading={conversationsLoading}
+            selectingId={selectingId}
+            conversationLoading={conversationLoading}
+            loading={loading}
+            query={query}
+            error={error}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            isDark={isDark}
+            setSidebarOpen={setSidebarOpen}
+            setQuery={setQuery}
+            selectConversation={selectConversation}
+            deleteConversation={deleteConversation}
+            upload={upload}
+            send={send}
+            sendQuestion={sendQuestion}
+            loadMoreMessages={loadMoreMessages}
+            setIsDark={setIsDark}
+            fileInput={fileInput}
+            uploadFileName={uploadFileName}
+            toasts={toasts}
+            dismissToast={dismissToast}
+            showToast={showToast}
+            signOut={signOut}
+          />
+        }
+      />
+      <Route
+        path="/"
+        element={
+          <ChatLayout
+            conversations={conversations}
+            active={active}
+            user={user}
+            sidebarOpen={sidebarOpen}
+            uploading={uploading}
+            deletingId={deletingId}
+            conversationsLoading={conversationsLoading}
+            selectingId={selectingId}
+            conversationLoading={conversationLoading}
+            loading={loading}
+            query={query}
+            error={error}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            isDark={isDark}
+            setSidebarOpen={setSidebarOpen}
+            setQuery={setQuery}
+            selectConversation={selectConversation}
+            deleteConversation={deleteConversation}
+            upload={upload}
+            send={send}
+            sendQuestion={sendQuestion}
+            loadMoreMessages={loadMoreMessages}
+            setIsDark={setIsDark}
+            fileInput={fileInput}
+            uploadFileName={uploadFileName}
+            toasts={toasts}
+            dismissToast={dismissToast}
+            showToast={showToast}
+            signOut={signOut}
+          />
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+function ChatLayout(props: {
+  conversations: Conversation[];
+  active: Conversation | null;
+  user: User;
+  sidebarOpen: boolean;
+  uploading: boolean;
+  deletingId: string | null;
+  conversationsLoading: boolean;
+  selectingId: string | null;
+  conversationLoading: boolean;
+  loading: boolean;
+  query: string;
+  error: string;
+  hasMore: boolean;
+  loadingMore: boolean;
+  isDark: boolean;
+  setSidebarOpen: (v: boolean) => void;
+  setQuery: (v: string) => void;
+  selectConversation: (c: Conversation) => void;
+  deleteConversation: (c: Conversation) => void;
+  upload: (f: File) => void;
+  send: (e: FormEvent) => void;
+  sendQuestion: (t: string) => void;
+  loadMoreMessages: () => void;
+  setIsDark: (f: (v: boolean) => boolean) => void;
+  fileInput: React.RefObject<HTMLInputElement | null>;
+  uploadFileName: string | null;
+  toasts: ToastItem[];
+  dismissToast: (id: number) => void;
+  showToast: (m: string, t?: ToastItem["type"]) => number;
+  signOut: () => void;
+}) {
+  const {
+    conversations,
+    active,
+    user,
+    sidebarOpen,
+    uploading,
+    deletingId,
+    conversationsLoading,
+    selectingId,
+    conversationLoading,
+    loading,
+    query,
+    error,
+    hasMore,
+    loadingMore,
+    isDark,
+    setSidebarOpen,
+    setQuery,
+    selectConversation,
+    deleteConversation,
+    upload,
+    send,
+    sendQuestion,
+    loadMoreMessages,
+    setIsDark,
+    fileInput,
+    uploadFileName,
+    toasts,
+    dismissToast,
+    signOut,
+  } = props;
 
   return (
     <div className="flex h-svh min-w-0 overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
@@ -545,22 +640,15 @@ function App() {
         user={user}
         open={sidebarOpen}
         uploading={uploading}
-        disabled={authLoading || !user}
+        disabled={!user}
         deletingId={deletingId}
         loadingConversations={conversationsLoading}
         selectingId={selectingId}
         onClose={() => setSidebarOpen(false)}
-        onNew={() => {
-          if (authLoading || !user) {
-            showToast("Please wait — verifying your session.", "error");
-            return;
-          }
-          fileInput.current?.click();
-        }}
+        onNew={() => fileInput.current?.click()}
         onSelect={selectConversation}
-        onDelete={(conversation) => void deleteConversation(conversation)}
+        onDelete={(c) => void deleteConversation(c)}
         onSignOut={signOut}
-        onNavigate={navigate}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-4 border-b border-[var(--line)] px-[18px] sm:px-[42px] h-[71px]">
@@ -577,29 +665,23 @@ function App() {
               <div>
                 <strong className="block text-sm">{active.title}</strong>
                 <small className="mt-0.5 flex items-center gap-1 text-[11px] text-[var(--muted)]">
-                  <Icon name="file" size={12} />{" "}
-                  {active.document_name ?? "Source document"}
+                  <Icon name="file" size={12} /> {active.document_name ?? "Source document"}
                 </small>
               </div>
             </div>
           ) : (
-            <div className="font-mono text-[10px] font-medium tracking-[1.5px] text-[var(--muted)] max-sm:hidden">
-              RAG / RESEARCH DESK
-            </div>
+            <div className="font-mono text-[10px] font-medium tracking-[1.5px] text-[var(--muted)] max-sm:hidden">RAG / RESEARCH DESK</div>
           )}
           <div className="ml-auto flex items-center gap-3">
             {user?.is_admin && (
-              <button
-                onClick={() => navigate("/admin")}
+              <Link
+                to="/admin"
                 className="rounded border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-medium hover:bg-[#eef1ec] dark:bg-[#1e323a] dark:hover:bg-[#22343c]"
               >
                 Admin
-              </button>
+              </Link>
             )}
-            <ThemeToggle
-              isDark={isDark}
-              onToggle={() => setIsDark((value) => !value)}
-            />
+            <ThemeToggle isDark={isDark} onToggle={() => setIsDark((value) => !value)} />
           </div>
         </header>
         {conversationLoading ? (
@@ -621,7 +703,7 @@ function App() {
             loading={loading}
             query={query}
             error={error}
-            disabled={authLoading || !user}
+            disabled={!user}
             onQueryChange={setQuery}
             onSubmit={send}
             onRetry={(text) => void sendQuestion(text)}
@@ -632,14 +714,8 @@ function App() {
         ) : (
           <Welcome
             uploading={uploading}
-            disabled={authLoading || !user}
-            onUpload={() => {
-              if (authLoading || !user) {
-                showToast("Please wait — verifying your session.", "error");
-                return;
-              }
-              fileInput.current?.click();
-            }}
+            disabled={!user}
+            onUpload={() => fileInput.current?.click()}
           />
         )}
       </main>
@@ -660,4 +736,6 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return <AppRoutes />;
+}

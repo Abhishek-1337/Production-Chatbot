@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { Conversation, User } from "../types";
 import { formatDate } from "../utils";
 import { Icon } from "./Icon";
@@ -18,7 +19,6 @@ type SidebarProps = {
   onSelect: (conversation: Conversation) => void;
   onDelete: (conversation: Conversation) => void;
   onSignOut: () => void;
-  onNavigate?: (to: string) => void;
 };
 
 function SidebarSkeleton() {
@@ -178,7 +178,6 @@ export function Sidebar({
   onSelect,
   onDelete,
   onSignOut,
-  onNavigate,
 }: SidebarProps) {
   return (
     <aside
@@ -260,15 +259,9 @@ export function Sidebar({
               {user?.email}
             </small>
             {user?.is_admin && (
-              onNavigate ? (
-                <button onClick={() => onNavigate("/admin")} className="mt-1 text-left text-[11px] font-medium text-[#7eb587] hover:underline">
-                  Admin dashboard →
-                </button>
-              ) : (
-                <a href="/admin" className="mt-1 text-[11px] font-medium text-[#7eb587] hover:underline">
-                  Admin dashboard →
-                </a>
-              )
+              <Link to="/admin" className="mt-1 text-[11px] font-medium text-[#7eb587] hover:underline">
+                Admin dashboard →
+              </Link>
             )}
           </div>
           <button
