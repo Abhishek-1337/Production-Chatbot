@@ -4,6 +4,7 @@ import { Icon } from "./Icon";
 type ComposerProps = {
   query: string;
   loading: boolean;
+  disabled?: boolean;
   onChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
 };
@@ -11,6 +12,7 @@ type ComposerProps = {
 export function Composer({
   query,
   loading,
+  disabled = false,
   onChange,
   onSubmit,
 }: ComposerProps) {
@@ -27,17 +29,18 @@ export function Composer({
       onSubmit={onSubmit}
     >
       <textarea
-        className="block min-h-[58px] w-full resize-none rounded-none border border-[#cfd8d2] bg-white px-[18px] py-[17px] pr-[60px] text-sm leading-normal text-[var(--ink)] shadow-[0_5px_16px_rgba(22,43,53,0.04)] outline-none placeholder:text-[#9ba5a3] focus:border-[#99aa9e] dark:border-[#405158] dark:bg-[#1a2930] dark:placeholder:text-[#80918f]"
+        className="block min-h-[58px] w-full resize-none rounded-none border border-[#cfd8d2] bg-white px-[18px] py-[17px] pr-[60px] text-sm leading-normal text-[var(--ink)] shadow-[0_5px_16px_rgba(22,43,53,0.04)] outline-none placeholder:text-[#9ba5a3] focus:border-[#99aa9e] dark:border-[#405158] dark:bg-[#1a2930] dark:placeholder:text-[#80918f] disabled:opacity-60"
         value={query}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Ask a question about your document..."
+        placeholder={disabled ? "Sign in to chat…" : "Ask a question about your document..."}
         rows={1}
         onKeyDown={handleKeyDown}
+        disabled={disabled}
       />
       <button
         className="absolute right-2 top-2 grid h-10 w-10 place-items-center border-0 bg-[var(--amber)] text-white disabled:bg-[#d5ded8] dark:disabled:bg-[#3b4b4d]"
         type="submit"
-        disabled={!query.trim() || loading}
+        disabled={disabled || !query.trim() || loading}
       >
         <Icon name="send" />
       </button>

@@ -39,6 +39,7 @@ function App() {
   );
   const fileInput = useRef<HTMLInputElement>(null);
   const api = createApi(token);
+  const [authLoading, setAuthLoading] = useState(() => !!token);
 
   // Pagination for active conversation messages (keyset)
   const [hasMore, setHasMore] = useState(false);
@@ -93,8 +94,16 @@ function App() {
   };
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setUser(null);
+      setConversations([]);
+      setActive(null);
+      setAuthLoading(false);
+      setConversationsLoading(false);
+      return;
+    }
     const client = createApi(token);
+    setAuthLoading(true);
     setConversationsLoading(true);
     setError("");
     Promise.all([client.getUser(), client.getConversations()])
@@ -124,12 +133,16 @@ function App() {
         if (err instanceof ApiError && err.status === 401) {
           localStorage.removeItem(TOKEN_KEY);
           setToken("");
+          setUser(null);
           setError("Your session has expired. Please sign in again.");
           return;
         }
         setError(errorMessage(err, "Could not load your workspace"));
       })
-      .finally(() => setConversationsLoading(false));
+      .finally(() => {
+        setConversationsLoading(false);
+        setAuthLoading(false);
+      });
   }, [token]);
 
   useEffect(() => {
@@ -165,6 +178,10 @@ function App() {
   }, [token]);
 
   const selectConversation = async (conversation: Conversation) => {
+    if (authLoading || !user) {
+      setError("Please wait — verifying your session.");
+      return;
+    }
     if (conversationLoading) return;
     if (active?.id === conversation.id && (active.messages?.length ?? 0) > 0) {
       setSidebarOpen(false);
@@ -189,6 +206,7 @@ function App() {
   };
 
   const loadMoreMessages = async () => {
+    if (authLoading || !user) return;
     if (!active || !hasMore || loadingMore) return;
     const oldest = active.messages?.[0]?.created_at ?? nextCursor;
     if (!oldest) return;
@@ -214,6 +232,10 @@ function App() {
   };
 
   const deleteConversation = async (conversation: Conversation) => {
+    if (authLoading || !user) {
+      setError("Please wait — verifying your session.");
+      return;
+    }
     if (deletingId) return;
     setDeletingId(conversation.id);
     setError("");
@@ -245,6 +267,11 @@ function App() {
   };
 
   const upload = async (file: File) => {
+    if (authLoading || !user) {
+      setError("You must be signed in to upload.");
+      showToast("Please sign in to upload documents.", "error");
+      return;
+    }
     setUploading(true);
     setUploadFileName(file.name);
     setError("");
@@ -276,6 +303,11 @@ function App() {
   };
 
   const sendQuestion = async (text: string) => {
+    if (authLoading || !user) {
+      setError("You must be signed in to chat.");
+      showToast("Please sign in to chat.", "error");
+      return;
+    }
     if (!text || !active || loading) return;
 
     const conversationId = active.id;
@@ -385,6 +417,7 @@ function App() {
         new FormData(event.currentTarget),
       );
       localStorage.setItem(TOKEN_KEY, newToken);
+      setAuthLoading(true);
       setToken(newToken);
     } catch (err) {
       setError(errorMessage(err, "Could not sign in"));
@@ -421,15 +454,38 @@ function App() {
     );
   }
 
-  if (isAdminRoute) {
-    if (!user) {
-      // still loading user
-      return (
-        <div className="flex h-svh items-center justify-center bg-[var(--paper)]">
-          <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" />
+  // Auth gate: don't render workspace / enable uploads/chat until session verified.
+  // This prevents the race where token exists but /auth/me hasn't resolved yet.
+  if (authLoading) {
+    return (
+      <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] px-6 text-center">
+        <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" aria-label="Verifying session" />
+        <div>
+          <p className="m-0 text-sm font-medium text-[var(--ink)]">Verifying your session…</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">Please wait — upload and chat are disabled until sign-in completes</p>
         </div>
-      );
-    }
+      </div>
+    );
+  }
+
+  if (!user) {
+    // Token present but user failed to load for non-401 reason — force re-login
+    return (
+      <AuthScreen
+        mode={authMode}
+        error={error || "Session could not be verified. Please sign in again."}
+        onModeChange={() => {
+          setAuthMode(authMode === "login" ? "register" : "login");
+          setError("");
+        }}
+        onSubmit={submitAuth}
+        isDark={isDark}
+        onThemeToggle={() => setIsDark((value) => !value)}
+      />
+    );
+  }
+
+  if (isAdminRoute) {
     if (!user.is_admin) {
       return (
         <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] p-6 text-center">
@@ -452,11 +508,18 @@ function App() {
         user={user}
         open={sidebarOpen}
         uploading={uploading}
+        disabled={authLoading || !user}
         deletingId={deletingId}
         loadingConversations={conversationsLoading}
         selectingId={selectingId}
         onClose={() => setSidebarOpen(false)}
-        onNew={() => fileInput.current?.click()}
+        onNew={() => {
+          if (authLoading || !user) {
+            showToast("Please wait — verifying your session.", "error");
+            return;
+          }
+          fileInput.current?.click();
+        }}
         onSelect={selectConversation}
         onDelete={(conversation) => void deleteConversation(conversation)}
         onSignOut={signOut}
@@ -520,6 +583,7 @@ function App() {
             loading={loading}
             query={query}
             error={error}
+            disabled={authLoading || !user}
             onQueryChange={setQuery}
             onSubmit={send}
             onRetry={(text) => void sendQuestion(text)}
@@ -530,7 +594,14 @@ function App() {
         ) : (
           <Welcome
             uploading={uploading}
-            onUpload={() => fileInput.current?.click()}
+            disabled={authLoading || !user}
+            onUpload={() => {
+              if (authLoading || !user) {
+                showToast("Please wait — verifying your session.", "error");
+                return;
+              }
+              fileInput.current?.click();
+            }}
           />
         )}
       </main>

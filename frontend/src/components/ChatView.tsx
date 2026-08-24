@@ -10,6 +10,7 @@ type ChatViewProps = {
   loading: boolean;
   query: string;
   error: string;
+  disabled?: boolean;
   onQueryChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
   onRetry: (query: string) => void;
@@ -23,6 +24,7 @@ export function ChatView({
   loading,
   query,
   error,
+  disabled = false,
   onQueryChange,
   onSubmit,
   onRetry,
@@ -215,6 +217,7 @@ export function ChatView({
       <Composer
         query={query}
         loading={loading}
+        disabled={disabled}
         onChange={onQueryChange}
         onSubmit={onSubmit}
       />
