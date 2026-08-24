@@ -18,6 +18,7 @@ type SidebarProps = {
   onSelect: (conversation: Conversation) => void;
   onDelete: (conversation: Conversation) => void;
   onSignOut: () => void;
+  onNavigate?: (to: string) => void;
 };
 
 function SidebarSkeleton() {
@@ -177,6 +178,7 @@ export function Sidebar({
   onSelect,
   onDelete,
   onSignOut,
+  onNavigate,
 }: SidebarProps) {
   return (
     <aside
@@ -258,9 +260,15 @@ export function Sidebar({
               {user?.email}
             </small>
             {user?.is_admin && (
-              <a href="/admin" className="mt-1 text-[11px] font-medium text-[#7eb587] hover:underline">
-                Admin dashboard →
-              </a>
+              onNavigate ? (
+                <button onClick={() => onNavigate("/admin")} className="mt-1 text-left text-[11px] font-medium text-[#7eb587] hover:underline">
+                  Admin dashboard →
+                </button>
+              ) : (
+                <a href="/admin" className="mt-1 text-[11px] font-medium text-[#7eb587] hover:underline">
+                  Admin dashboard →
+                </a>
+              )
             )}
           </div>
           <button
