@@ -120,41 +120,12 @@ Both the user query and the streamed answer are persisted to `chat_messages`.
 - [x] **Cost tracking per request and per user** — `token_usage` table + `is_admin` role; per-query `llm`/`embedding`/`summary` rows via `services/token_usage_service.py:1` (uses `result.usage()` with tiktoken fallback); admin analytics endpoints at `api/v1/routes/admin.py:1`
 - [x] **Admin token dashboard** — `/admin` route (`frontend/src/pages/AdminDashboard.tsx:1`) with Recharts: daily `AreaChart` (total/prompt/completion), top-10 `BarChart` + leaderboard table, top-per-day table, date range picker (default 30d) + source filter, summary cards (total/today/7d/30d)
 
-### In Progress 🟡
-- [ ] **Input guardrails active (prompt injection, PII)** — config exists (`self_check_input`) and runs on legacy `/chat`; **not yet applied to the SSE RAG endpoint**
-- [ ] **Output guardrails active (content filtering, format validation)** — config exists (`self_check_output`); same gap as above
-- [ ] **Health check endpoint returning dependency status** — `/health` exists but only returns `{"status":"ok"}`, not DB/vector-store status
-- [ ] **CORS configured for production domains only** — currently allows `http://localhost:3000` (dev) only
-- [ ] **Structured logging with request IDs** — dependency `logger.info` exists in `alembic/env.py` only; no request-scoped logging middleware yet
 
 ### Not Started ⬜
-- [ ] **Rate limiting per user (10–50 req/min default)**
 - [ ] **Fallback model chain configured**
 - [ ] **Max token limits on input and output**
 - [ ] **Timeout on all external calls (30s default)**
 - [ ] **Load test with 100 concurrent users passing**
-
----
-
-## Recent Changes
-
-### 2026-08-23 — Admin token usage dashboard
-
-- **feat(db): add `token_usage` + `is_admin`** (`backend/models/token_usage.py:1`, `backend/models/user.py:31`, `backend/alembic/versions/72cadb3c5dd0_add_token_usage_and_is_admin.py:1`) — new `token_usage` table with `source` enum (`llm`/`embedding`/`summary`), indexes; `users.is_admin` with server_default.
-- **feat(token): instrument per-query tracking** (`backend/services/token_usage_service.py:1`, `backend/api/v1/controllers/chat_message.py:20`) — `_run_agent_stream`/`_summarize_history` capture `result.usage()` (prompt/completion) with `tiktoken` fallback; embedding (`all-MiniLM-L6-v2`) estimated before retrieval; all rows flushed with `ChatMessage` commit; `schemas/auth.py:14` exposes `is_admin`.
-- **feat(admin): analytics API** (`backend/api/v1/routes/admin.py:1`, `backend/scripts/make_admin.py:1`) — `require_admin` guard, `GET /admin/token-usage/daily|top-users|summary|top-per-day` with `date_trunc` UTC + `source` filter, registered in `api/v1/__init__.py:1`.
-- **feat(ui): `/admin` dashboard** (`frontend/src/pages/AdminDashboard.tsx:1`, `frontend/src/App.tsx:22`) — Recharts `AreaChart`/`BarChart`, date range picker (30d default), source filter, summary cards, leaderboard + top-per-day tables; admin links in header/sidebar; `User` type extended with `is_admin`.
-- **note:** `718` identical in summary cards is expected on fresh DB (no backfill) — total/today/7d/30d overlap when only today's rows exist; diverges after multi-day usage.
-
-### 2026-08-23 — Delete feedback UX fix
-
-- **fix(ui): show deleting state immediately on conversation delete** (`frontend/src/components/Sidebar.tsx:75-152`, `frontend/src/App.tsx:214-237`) — `ConversationCard` previously only rendered `Deleting…` inside the dropdown menu (`menuOpen && isDeleting`), which closed on `onDelete` (`setMenuOpen(false)`) so no feedback was visible during the async `api.deleteConversation` call. Fixed by rendering deleting state at the card level: `aria-busy` + `opacity-60`, left icon → spinner, inline `Deleting…` label next to title (alongside existing `Loading…` for `isSelecting`), and right-side spinner replacing the three-dot menu while `deletingId === conversation.id`; disabled `onSelect`/menu actions during delete. Added `loading` toast in `App.deleteConversation()` (mirroring `upload`) — `Deleting "title"…` → success/error — so global feedback is visible even when sidebar is collapsed.
-
-### 2026-08-23 — Chat history summarization & DRY refactor
-
-- **feat(chat): summarize history when exceeding 5 messages** (`backend/api/v1/controllers/chat_message.py:29`, `backend/api/v1/controllers/chat_message.py:79-155`) — `MAX_HISTORY_MESSAGES` reduced `12 → 5`; new `SUMMARY_QA_COUNT=12` / `SUMMARY_WINDOW_MESSAGES=24` / `SUMMARY_MAX_CHARS=12000`; added `@retry_llm _summarize_history()` and `_get_history_context()` (summary + verbatim recent 5, fail-open to truncated history); `chat_message_stream()` now uses `_get_history_context()` with fallback to `_get_conversation_history()`/`_format_conversation_history()`.
-- **refactor(chat): deduplicate conversation history fetching** (`backend/api/v1/controllers/chat_message.py:39`) — extracted shared `async def _fetch_ordered_messages(conversation_id, current_query, db, limit)` (single `select … order_by(desc).limit` + `reversed` + `current_query` pop); `_get_conversation_history()` and `_get_history_context()` now delegate, removing duplicated 9-line fetch blocks.
-- **docs: update README** — documented history window + summarization and DRY helper.
 
 ---
 
