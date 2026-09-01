@@ -98,6 +98,7 @@ async def verify_google_id_token(id_token: str) -> dict:
         key,
         algorithms=["RS256"],
         audience=GOOGLE_CLIENT_ID or None,
+        options={"verify_at_hash": False},
     )
     iss = claims.get("iss")
     if iss not in GOOGLE_ISSUERS:
