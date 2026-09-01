@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate, Link } from "react-router-dom";
 import { ApiError, authenticate, createApi, readAssistantStream } from "./api";
+import { GOOGLE_OAUTH_URL } from "./config";
 import { AuthScreen } from "./components/AuthScreen";
 import { ChatView } from "./components/ChatView";
 import { Icon } from "./components/Icon";
@@ -68,6 +69,22 @@ function AppRoutes() {
     document.documentElement.dataset.theme = isDark ? "dark" : "light";
     localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
   }, [isDark]);
+
+  // Handle Google OAuth callback: backend redirects to /oauth/callback?token=...
+  useEffect(() => {
+    if (location.pathname !== "/oauth/callback") return;
+    const params = new URLSearchParams(location.search);
+    const oauthToken = params.get("token");
+    if (oauthToken) {
+      localStorage.setItem(TOKEN_KEY, oauthToken);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setToken(oauthToken);
+    } else {
+      setError(params.get("error") ?? "Google sign-in failed. Please try again.");
+    }
+    navigate("/", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.search]);
 
   const updateConversationUrl = (id: string | null, replace = false) => {
     const to = id ? `/conversations/${encodeURIComponent(id)}` : "/";
@@ -407,6 +424,10 @@ function AppRoutes() {
     }
   };
 
+  const googleLogin = () => {
+    window.location.href = GOOGLE_OAUTH_URL;
+  };
+
   const signOut = () => {
     localStorage.removeItem(TOKEN_KEY);
     setToken("");
@@ -422,6 +443,18 @@ function AppRoutes() {
   };
 
   // --- Auth guards ---
+  if (location.pathname === "/oauth/callback") {
+    return (
+      <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] px-6 text-center">
+        <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" aria-label="Completing sign-in" />
+        <div>
+          <p className="m-0 text-sm font-medium text-[var(--ink)]">Completing sign-in…</p>
+          <p className="mt-1 text-xs text-[var(--muted)]">Finishing your Google authentication.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!token) {
     return (
       <AuthScreen
@@ -432,6 +465,7 @@ function AppRoutes() {
           setError("");
         }}
         onSubmit={submitAuth}
+        onGoogleLogin={googleLogin}
         isDark={isDark}
         onThemeToggle={() => setIsDark((value) => !value)}
       />
@@ -460,6 +494,7 @@ function AppRoutes() {
           setError("");
         }}
         onSubmit={submitAuth}
+        onGoogleLogin={googleLogin}
         isDark={isDark}
         onThemeToggle={() => setIsDark((value) => !value)}
       />
