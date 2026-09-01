@@ -1,15 +1,18 @@
+from urllib.parse import quote
+
 from fastapi import HTTPException, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from schemas.auth import Token, UserResponse, CreateUserRequest, LoginRequest
 from services.auth import authenticate_user, create_access_token, create_user
 from services.google_oauth import (
     FRONTEND_URL,
-    decode_google_id_token,
+    GOOGLE_COOKIE_NAME,
     exchange_code_for_tokens,
     get_google_login_url,
     get_or_create_google_user,
+    verify_google_id_token,
 )
 
 
@@ -50,32 +53,56 @@ async def google_login_controller() -> RedirectResponse:
     return RedirectResponse(get_google_login_url(), status_code=302)
 
 
+def _google_error_redirect(message: str) -> RedirectResponse:
+    return RedirectResponse(
+        f"{FRONTEND_URL}/oauth/callback?error={quote(message)}",
+        status_code=302,
+    )
+
+
 async def google_callback_controller(
     code: str | None,
     db: AsyncSession,
 ) -> RedirectResponse:
     if not code:
-        return RedirectResponse(
-            f"{FRONTEND_URL}/oauth/callback?error=Google sign-in was cancelled",
-            status_code=302,
-        )
+        return _google_error_redirect("Google sign-in was cancelled")
+
     try:
         tokens = await exchange_code_for_tokens(code)
         id_token = tokens.get("id_token")
         if not id_token:
             raise ValueError("No id_token in Google token response")
-        claims = decode_google_id_token(id_token)
+        claims = await verify_google_id_token(id_token)
         email = claims.get("email")
-        if not email or not claims.get("email_verified"):
-            raise ValueError("Google account email is not verified")
-        user = await get_or_create_google_user(db, email, claims.get("name", ""))
-        access_token = create_access_token(data={"sub": str(user.id)})
-        return RedirectResponse(
-            f"{FRONTEND_URL}/oauth/callback?token={access_token}",
-            status_code=302,
-        )
+        if not email:
+            raise ValueError("Google account has no verified email")
+        google_sub = claims.get("sub")
+        await get_or_create_google_user(db, email, claims.get("name", ""), google_sub)
     except Exception:
-        return RedirectResponse(
-            f"{FRONTEND_URL}/oauth/callback?error=Google sign-in failed",
-            status_code=302,
-        )
+        return _google_error_redirect("Google sign-in failed")
+
+    response = RedirectResponse(FRONTEND_URL, status_code=302)
+    response.set_cookie(
+        GOOGLE_COOKIE_NAME,
+        id_token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=int(tokens.get("expires_in", 3600)),
+        path="/",
+    )
+    return response
+
+
+async def google_logout_controller() -> JSONResponse:
+    response = JSONResponse({"detail": "signed out"})
+    # delete must match path of the original cookie; samesite/secure are not
+    # required for deletion matching but we set them for completeness
+    response.delete_cookie(
+        GOOGLE_COOKIE_NAME,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=False,
+    )
+    return response

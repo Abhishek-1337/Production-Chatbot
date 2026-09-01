@@ -1,6 +1,6 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models.user import User
@@ -11,6 +11,7 @@ from api.v1.controllers.auth import (
     login_controller,
     google_login_controller,
     google_callback_controller,
+    google_logout_controller,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -43,6 +44,21 @@ async def google_callback(
     code: str | None = None,
 ) -> RedirectResponse:
     return await google_callback_controller(code, db)
+
+
+@router.get("/google/logout", include_in_schema=False)
+async def google_logout() -> JSONResponse:
+    return await google_logout_controller()
+
+
+@router.post("/logout", include_in_schema=False)
+async def logout() -> JSONResponse:
+    return await google_logout_controller()
+
+
+@router.post("/google/logout", include_in_schema=False)
+async def google_logout_post() -> JSONResponse:
+    return await google_logout_controller()
 
 
 @router.get("/me", response_model=UserResponse)
