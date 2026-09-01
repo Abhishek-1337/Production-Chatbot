@@ -71,6 +71,7 @@ export default function AdminDashboard() {
     try {
       const qs = `start=${start}&end=${end}&source=${source}`;
       const d1 = await fetch(`${API_URL}/admin/token-usage/daily?${qs}`, {
+        credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!d1.ok) {
@@ -81,6 +82,7 @@ export default function AdminDashboard() {
       setDaily(j1.data);
 
       const d2 = await fetch(`${API_URL}/admin/token-usage/top-users?${qs}&limit=10`, {
+        credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!d2.ok) throw new Error("Top users failed");
@@ -88,6 +90,7 @@ export default function AdminDashboard() {
       setTopUsers(j2.data);
 
       const d3 = await fetch(`${API_URL}/admin/token-usage/summary?source=${source}`, {
+        credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
       if (d3.ok) {
@@ -96,6 +99,7 @@ export default function AdminDashboard() {
       }
 
       const d4 = await fetch(`${API_URL}/admin/token-usage/top-per-day?${qs}`, {
+        credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
       if (d4.ok) {

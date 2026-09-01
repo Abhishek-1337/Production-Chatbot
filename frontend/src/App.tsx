@@ -40,7 +40,7 @@ function AppRoutes() {
   const [isDark, setIsDark] = useState(() => localStorage.getItem(THEME_KEY) === "dark");
   const fileInput = useRef<HTMLInputElement>(null);
   const api = createApi(token);
-  const [authLoading, setAuthLoading] = useState(() => !!token);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Pagination for active conversation messages (keyset)
   const [hasMore, setHasMore] = useState(false);
@@ -70,17 +70,14 @@ function AppRoutes() {
     localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
   }, [isDark]);
 
-  // Handle Google OAuth callback: backend redirects to /oauth/callback?token=...
+  // Handle Google OAuth callback redirect (error is passed via query)
   useEffect(() => {
     if (location.pathname !== "/oauth/callback") return;
     const params = new URLSearchParams(location.search);
-    const oauthToken = params.get("token");
-    if (oauthToken) {
-      localStorage.setItem(TOKEN_KEY, oauthToken);
+    const err = params.get("error");
+    if (err) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToken(oauthToken);
-    } else {
-      setError(params.get("error") ?? "Google sign-in failed. Please try again.");
+      setError(err);
     }
     navigate("/", { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,21 +108,13 @@ function AppRoutes() {
   };
 
   useEffect(() => {
-    if (!token) {
-      setUser(null);
-      setConversations([]);
-      setActive(null);
-      setAuthLoading(false);
-      setConversationsLoading(false);
-      return;
-    }
     const client = createApi(token);
     setAuthLoading(true);
     setConversationsLoading(true);
-    setError("");
     Promise.all([client.getUser(), client.getConversations()])
       .then(async ([me, chats]) => {
         setUser(me);
+        setError("");
         setConversations(chats);
         const conversationId = getConversationIdFromPath(location.pathname);
         const conversation = chats.find((item) => item.id === conversationId);
@@ -147,11 +136,15 @@ function AppRoutes() {
         }
       })
       .catch((err) => {
+        setUser(null);
+        setConversations([]);
+        setActive(null);
         if (err instanceof ApiError && err.status === 401) {
-          localStorage.removeItem(TOKEN_KEY);
-          setToken("");
-          setUser(null);
-          setError("Your session has expired. Please sign in again.");
+          if (token) {
+            localStorage.removeItem(TOKEN_KEY);
+            setToken("");
+            setError("Your session has expired. Please sign in again.");
+          }
           return;
         }
         setError(errorMessage(err, "Could not load your workspace"));
@@ -166,7 +159,7 @@ function AppRoutes() {
 
   // React to SPA route changes (back/forward, Link navigation) to load conversation
   useEffect(() => {
-    if (!token || !user) return;
+    if (!user) return;
     const conversationId = getConversationIdFromPath(location.pathname);
     if (!conversationId) {
       setActive(null);
@@ -428,7 +421,12 @@ function AppRoutes() {
     window.location.href = GOOGLE_OAUTH_URL;
   };
 
-  const signOut = () => {
+  const signOut = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // ignore — clear local state regardless
+    }
     localStorage.removeItem(TOKEN_KEY);
     setToken("");
     setUser(null);
@@ -443,35 +441,6 @@ function AppRoutes() {
   };
 
   // --- Auth guards ---
-  if (location.pathname === "/oauth/callback") {
-    return (
-      <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] px-6 text-center">
-        <span className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--amber)]" aria-label="Completing sign-in" />
-        <div>
-          <p className="m-0 text-sm font-medium text-[var(--ink)]">Completing sign-in…</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">Finishing your Google authentication.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!token) {
-    return (
-      <AuthScreen
-        mode={authMode}
-        error={error}
-        onModeChange={() => {
-          setAuthMode(authMode === "login" ? "register" : "login");
-          setError("");
-        }}
-        onSubmit={submitAuth}
-        onGoogleLogin={googleLogin}
-        isDark={isDark}
-        onThemeToggle={() => setIsDark((value) => !value)}
-      />
-    );
-  }
-
   if (authLoading) {
     return (
       <div className="flex h-svh flex-col items-center justify-center gap-4 bg-[var(--paper)] px-6 text-center">
@@ -488,7 +457,7 @@ function AppRoutes() {
     return (
       <AuthScreen
         mode={authMode}
-        error={error || "Session could not be verified. Please sign in again."}
+        error={error}
         onModeChange={() => {
           setAuthMode(authMode === "login" ? "register" : "login");
           setError("");

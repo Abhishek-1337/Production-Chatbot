@@ -17,6 +17,7 @@ export function createApi(token: string) {
   async function request(path: string, options: RequestInit = {}) {
     const response = await fetch(`${API_URL}${path}`, {
       ...options,
+      credentials: "include",
       headers: {
         ...(options.body instanceof FormData
           ? {}
@@ -40,6 +41,9 @@ export function createApi(token: string) {
   return {
     async getUser() {
       return (await request("/auth/me")).json() as Promise<User>;
+    },
+    async logout() {
+      await request("/auth/google/logout", { method: "GET" });
     },
     async getConversations(limit = 20, offset = 0) {
       const qs = new URLSearchParams({
@@ -105,6 +109,7 @@ export async function authenticate(mode: "login" | "register", form: FormData) {
     `${API_URL}/auth/${mode === "login" ? "login" : "register"}`,
     {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     },
