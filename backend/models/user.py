@@ -25,6 +25,12 @@ class User(Base):
         unique=True,
         index=True,
     )
+    google_sub: Mapped[str | None] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
     password: Mapped[str] = mapped_column(
         String(255)
     )
