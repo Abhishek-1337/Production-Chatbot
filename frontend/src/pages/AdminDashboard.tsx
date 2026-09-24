@@ -171,13 +171,6 @@ export default function AdminDashboard() {
 
         {error && <div className="mb-4 rounded bg-red-50 border border-red-200 text-red-700 px-4 py-2 text-sm">{error}</div>}
 
-        <nav className="flex flex-wrap gap-x-4 gap-y-2 mb-6 text-sm">
-          <a href="#summary" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Summary</a>
-          <a href="#daily" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Tokens per day</a>
-          <a href="#top-users" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Top consumers</a>
-          <a href="#top-per-day" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Top per day</a>
-        </nav>
-
         {summary && (
           <div id="summary" className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 scroll-mt-4">
             <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
