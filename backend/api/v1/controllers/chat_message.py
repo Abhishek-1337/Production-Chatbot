@@ -24,7 +24,8 @@ async def _run_agent_stream(prompt: str) -> tuple[str, object | None]:
     full = ""
     usage = None
     async with agent.run_stream(prompt) as result:
-        async for chunk in result.stream_text():
+
+        async for chunk in result.stream_text(delta=True):
             full += chunk
         try:
             usage = result.usage()

@@ -158,6 +158,28 @@ def get_threshold() -> float:
     return _THRESHOLD
 
 
+_DEGENERATE_MIN_WORDS = 30
+_DEGENERATE_WINDOW = 8
+_DEGENERATE_MAX_REPEATS = 3
+
+
+def is_degenerate_answer(text: str) -> bool:
+    """Detect pathologically self-repeating answers (e.g. cumulative stream
+    snapshots glued together). True if any 8-word window occurs 3+ times.
+    Short answers are never flagged to avoid false positives."""
+    words = (text or "").split()
+    if len(words) < _DEGENERATE_MIN_WORDS:
+        return False
+    seen: dict[str, int] = {}
+    for i in range(len(words) - _DEGENERATE_WINDOW + 1):
+        window = " ".join(words[i : i + _DEGENERATE_WINDOW])
+        count = seen.get(window, 0) + 1
+        if count >= _DEGENERATE_MAX_REPEATS:
+            return True
+        seen[window] = count
+    return False
+
+
 def lookup(
     query: str,
     user_id: str,
@@ -256,6 +278,10 @@ def store(
     if not query or not answer:
         return False
     if answer.lower().startswith("i couldn't answer") or answer.lower().startswith("i cannot find"):
+        return False
+    if is_degenerate_answer(answer):
+        # Never cache pathologically self-repeating text (e.g. cumulative
+        # stream snapshots glued together) — it would replay forever.
         return False
 
     embedding = _embed_query(query)
