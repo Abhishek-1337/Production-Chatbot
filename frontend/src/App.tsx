@@ -490,10 +490,7 @@ function AppRoutes() {
               <Link to="/" className="rounded bg-[var(--navy)] px-4 py-2 text-sm text-white">
                 Back to chat
               </Link>
-              <p className="text-xs text-[var(--muted)]">
-                Tip: Run <code>python scripts/make_admin.py {user.email}</code> on the server or{" "}
-                <code>UPDATE users SET is_admin=true WHERE email='{user.email}'</code> and re-login.
-              </p>
+                <p className="text-sm text-[var(--muted)]">Contact your administrator to request access.</p>
             </div>
           ) : (
             <AdminDashboard />
