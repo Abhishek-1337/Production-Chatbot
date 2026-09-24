@@ -70,12 +70,19 @@ function AppRoutes() {
     localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
   }, [isDark]);
 
-  // Handle Google OAuth callback redirect (error is passed via query)
+  // Handle Google OAuth callback redirect (token or error passed via query)
   useEffect(() => {
     if (location.pathname !== "/oauth/callback") return;
     const params = new URLSearchParams(location.search);
+    const oauthToken = params.get("token");
     const err = params.get("error");
-    if (err) {
+    if (oauthToken) {
+      localStorage.setItem(TOKEN_KEY, oauthToken);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setToken(oauthToken);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setError("");
+    } else if (err) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setError(err);
     }

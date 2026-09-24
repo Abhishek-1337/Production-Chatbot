@@ -77,21 +77,15 @@ async def google_callback_controller(
         if not email:
             raise ValueError("Google account has no verified email")
         google_sub = claims.get("sub")
-        await get_or_create_google_user(db, email, claims.get("name", ""), google_sub)
+        user = await get_or_create_google_user(db, email, claims.get("name", ""), google_sub)
     except Exception:
         return _google_error_redirect("Google sign-in failed")
 
-    response = RedirectResponse(FRONTEND_URL, status_code=302)
-    response.set_cookie(
-        GOOGLE_COOKIE_NAME,
-        id_token,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        max_age=int(tokens.get("expires_in", 3600)),
-        path="/",
+    access_token = create_access_token(data={"sub": str(user.id)})
+    return RedirectResponse(
+        f"{FRONTEND_URL}/oauth/callback?token={quote(access_token)}",
+        status_code=302,
     )
-    return response
 
 
 async def google_logout_controller() -> JSONResponse:
