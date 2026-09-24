@@ -67,6 +67,37 @@ def test_semantic_cache_uses_ephemeral_client(tmp_path=None):
             assert sc._COLLECTION_NAME not in [c.name for c in client.list_collections()]
 
 
+def test_store_rejects_degenerate_answer():
+    """Mangled self-repeating answers must never enter the cache."""
+    import services.semantic_cache as sc
+
+    mangled = " ".join(
+        ["Abhishek is a Full Stack Engineer working remotely"] * 4
+    )
+    assert sc.is_degenerate_answer(mangled) is True
+
+    healthy = (
+        "Abhishek is a Full Stack Engineer with two years of experience. "
+        "He works remotely in the shipping industry. "
+        "His stack includes SQL Server, Azure, APIs and WebSockets. "
+        "He is currently learning about AI agents and embeddings."
+    )
+    assert sc.is_degenerate_answer(healthy) is False
+    assert sc.is_degenerate_answer("hi there") is False
+
+    client = chromadb.EphemeralClient()
+    with patch.object(sc, "_get_chroma_client", return_value=client):
+        try:
+            client.delete_collection(sc._COLLECTION_NAME)
+        except Exception:
+            pass
+        # Degenerate answer is refused without needing embeddings,
+        # so the collection is never even created.
+        assert sc.store("who is abhishek?", mangled, "u1", "d1") is False
+        names = [c.name for c in client.list_collections()]
+        assert sc._COLLECTION_NAME not in names
+
+
 def test_semantic_cache_with_temp_persistent_client():
     """Alternative: PersistentClient at tmp_path — also isolated."""
     with tempfile.TemporaryDirectory() as tmpdir:
