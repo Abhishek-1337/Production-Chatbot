@@ -59,10 +59,6 @@ function formatUSD(v: number | undefined | null) {
   const n = v ?? 0;
   return n > 0 && n < 0.0001 ? `$${n.toFixed(6)}` : `$${n.toFixed(4)}`;
 }
-
-async function copyText(text: string) {
-  await navigator.clipboard.writeText(text);
-}
 function getToken() {
   return localStorage.getItem(TOKEN_KEY) ?? "";
 }
@@ -85,40 +81,7 @@ export default function AdminDashboard() {
   const [topPerDay, setTopPerDay] = useState<TopDayRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState<string | null>(null);
   const token = getToken();
-
-  const endpoints = [
-    { key: "daily", label: "Daily tokens + cost", url: `${API_URL}/admin/token-usage/daily?start=${start}&end=${end}&source=${source}` },
-    { key: "top-users", label: "Top users + cost", url: `${API_URL}/admin/token-usage/top-users?start=${start}&end=${end}&source=${source}&limit=10` },
-    { key: "summary", label: "Summary + cost", url: `${API_URL}/admin/token-usage/summary?source=${source}` },
-    { key: "top-per-day", label: "Top per day + cost", url: `${API_URL}/admin/token-usage/top-per-day?start=${start}&end=${end}&source=${source}` },
-  ];
-
-  const openJson = async (url: string) => {
-    setError("");
-    try {
-      const res = await fetch(url, {
-        credentials: "include",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error(`Request failed ${res.status}`);
-      const blob = new Blob([JSON.stringify(await res.json(), null, 2)], { type: "application/json" });
-      window.open(URL.createObjectURL(blob), "_blank", "noopener");
-    } catch (e: any) {
-      setError(e.message ?? "Failed to open JSON");
-    }
-  };
-
-  const copyUrl = async (key: string, url: string) => {
-    try {
-      await copyText(url);
-      setCopied(key);
-      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
-    } catch {
-      setError("Could not copy to clipboard");
-    }
-  };
 
   const fetchAll = async () => {
     setLoading(true);
@@ -208,38 +171,15 @@ export default function AdminDashboard() {
 
         {error && <div className="mb-4 rounded bg-red-50 border border-red-200 text-red-700 px-4 py-2 text-sm">{error}</div>}
 
-        <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4 mb-6">
-          <h2 className="text-sm font-semibold mb-1">API access</h2>
-          <p className="text-[11px] text-[var(--muted)] mb-3">
-            Open the raw JSON behind each panel (uses your current filters and session), or copy the URL.
-            Direct links need an <code>Authorization: Bearer &lt;token&gt;</code> header.
-          </p>
-          <div className="flex flex-col gap-2">
-            {endpoints.map((ep) => (
-              <div key={ep.key} className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-medium w-36">{ep.label}</span>
-                <code className="flex-1 min-w-[200px] truncate rounded bg-[#f4f4f0] dark:bg-[#22343c] px-2 py-1 font-mono text-[11px]" title={ep.url}>
-                  {ep.url}
-                </code>
-                <button
-                  onClick={() => void openJson(ep.url)}
-                  className="rounded border border-[var(--line)] px-2 py-1 hover:bg-[#eef1ec] dark:hover:bg-[#22343c]"
-                >
-                  Open JSON
-                </button>
-                <button
-                  onClick={() => void copyUrl(ep.key, ep.url)}
-                  className="rounded border border-[var(--line)] px-2 py-1 hover:bg-[#eef1ec] dark:hover:bg-[#22343c]"
-                >
-                  {copied === ep.key ? "Copied!" : "Copy URL"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <nav className="flex flex-wrap gap-x-4 gap-y-2 mb-6 text-sm">
+          <a href="#summary" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Summary</a>
+          <a href="#daily" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Tokens per day</a>
+          <a href="#top-users" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Top consumers</a>
+          <a href="#top-per-day" className="text-[var(--muted)] hover:text-[var(--ink)] underline">Top per day</a>
+        </nav>
 
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div id="summary" className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 scroll-mt-4">
             <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
               <div className="text-xs text-[var(--muted)]">Total tokens</div>
               <div className="text-xl font-semibold">{summary.total_tokens.toLocaleString()}</div>
@@ -263,7 +203,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4 mb-6">
+        <div id="daily" className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4 mb-6 scroll-mt-4">
           <h2 className="text-sm font-semibold mb-3">Tokens per day</h2>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -283,7 +223,7 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 mb-6">
-          <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
+          <div id="top-users" className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4 scroll-mt-4">
             <h2 className="text-sm font-semibold mb-3">Top consumers (selected range)</h2>
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -332,7 +272,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
+          <div id="top-per-day" className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4 scroll-mt-4">
             <h2 className="text-sm font-semibold mb-3">Who consumed most per day</h2>
             <div className="overflow-auto max-h-[620px] border rounded border-[var(--line)]">
               <table className="w-full text-xs">
