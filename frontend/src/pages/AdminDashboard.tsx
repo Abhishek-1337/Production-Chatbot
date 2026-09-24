@@ -23,6 +23,7 @@ type DailyRow = {
   prompt_tokens: number;
   completion_tokens: number;
   query_count: number;
+  cost_usd: number;
 };
 type TopUser = {
   user_id: string;
@@ -32,6 +33,7 @@ type TopUser = {
   prompt_tokens: number;
   completion_tokens: number;
   query_count: number;
+  cost_usd: number;
 };
 type Summary = {
   total_tokens: number;
@@ -39,7 +41,24 @@ type Summary = {
   last_7d_tokens: number;
   last_30d_tokens: number;
   active_users_30d: number;
+  total_cost_usd: number;
+  today_cost_usd: number;
+  last_7d_cost_usd: number;
+  last_30d_cost_usd: number;
 };
+type TopDayRow = {
+  date: string;
+  user_id: string | null;
+  email: string | null;
+  name: string | null;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+function formatUSD(v: number | undefined | null) {
+  const n = v ?? 0;
+  return n > 0 && n < 0.0001 ? `$${n.toFixed(6)}` : `$${n.toFixed(4)}`;
+}
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY) ?? "";
@@ -60,7 +79,7 @@ export default function AdminDashboard() {
   const [daily, setDaily] = useState<DailyRow[]>([]);
   const [topUsers, setTopUsers] = useState<TopUser[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [topPerDay, setTopPerDay] = useState<any[]>([]);
+  const [topPerDay, setTopPerDay] = useState<TopDayRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const token = getToken();
@@ -158,19 +177,22 @@ export default function AdminDashboard() {
             <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
               <div className="text-xs text-[var(--muted)]">Total tokens</div>
               <div className="text-xl font-semibold">{summary.total_tokens.toLocaleString()}</div>
-              <div className="text-[11px] text-[var(--muted)]">All time ({source})</div>
+              <div className="text-[11px] text-[var(--muted)]">All time ({source}) · {formatUSD(summary.total_cost_usd)}</div>
             </div>
             <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
               <div className="text-xs text-[var(--muted)]">Today</div>
               <div className="text-xl font-semibold">{summary.today_tokens.toLocaleString()}</div>
+              <div className="text-[11px] text-[var(--muted)]">{formatUSD(summary.today_cost_usd)}</div>
             </div>
             <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
               <div className="text-xs text-[var(--muted)]">Last 7 days</div>
               <div className="text-xl font-semibold">{summary.last_7d_tokens.toLocaleString()}</div>
+              <div className="text-[11px] text-[var(--muted)]">{formatUSD(summary.last_7d_cost_usd)}</div>
             </div>
             <div className="rounded-xl border border-[var(--line)] bg-white dark:bg-[#1e323a] p-4">
               <div className="text-xs text-[var(--muted)]">Last 30 days / Active users</div>
               <div className="text-xl font-semibold">{summary.last_30d_tokens.toLocaleString()} <span className="text-sm font-normal text-[var(--muted)]">/ {summary.active_users_30d} users</span></div>
+              <div className="text-[11px] text-[var(--muted)]">{formatUSD(summary.last_30d_cost_usd)}</div>
             </div>
           </div>
         )}
@@ -191,7 +213,7 @@ export default function AdminDashboard() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <div className="mt-2 text-[11px] text-[var(--muted)]">Daily totals grouped by UTC date_trunc. Switch source filter to see embedding vs LLM breakdown.</div>
+          <div className="mt-2 text-[11px] text-[var(--muted)]">Daily totals grouped by UTC date_trunc. Switch source filter to see embedding vs LLM breakdown. Costs estimated at gpt-4o-mini rates ($0.15/$0.60 per 1M input/output tokens); local embeddings and cache hits cost $0.</div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 mb-6">
@@ -215,6 +237,7 @@ export default function AdminDashboard() {
                     <th className="text-left p-2">#</th>
                     <th className="text-left p-2">User</th>
                     <th className="text-right p-2">Tokens</th>
+                    <th className="text-right p-2">Est. cost</th>
                     <th className="text-right p-2">Queries</th>
                   </tr>
                 </thead>
@@ -227,12 +250,13 @@ export default function AdminDashboard() {
                         <div className="text-[11px] text-[var(--muted)]">{u.email}</div>
                       </td>
                       <td className="p-2 text-right font-mono">{u.total_tokens.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono">{formatUSD(u.cost_usd)}</td>
                       <td className="p-2 text-right">{u.query_count}</td>
                     </tr>
                   ))}
                   {topUsers.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="p-4 text-center text-[var(--muted)]">
+                      <td colSpan={5} className="p-4 text-center text-[var(--muted)]">
                         No data in range — send a query to generate usage.
                       </td>
                     </tr>
@@ -251,6 +275,7 @@ export default function AdminDashboard() {
                     <th className="text-left p-2">Date</th>
                     <th className="text-left p-2">Top user</th>
                     <th className="text-right p-2">Tokens</th>
+                    <th className="text-right p-2">Est. cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -259,6 +284,7 @@ export default function AdminDashboard() {
                       <td className="p-2 font-mono">{r.date}</td>
                       <td className="p-2">{r.email ? `${r.name} (${r.email})` : <span className="text-[var(--muted)]">—</span>}</td>
                       <td className="p-2 text-right font-mono">{r.total_tokens.toLocaleString()}</td>
+                      <td className="p-2 text-right font-mono">{formatUSD(r.cost_usd)}</td>
                     </tr>
                   ))}
                 </tbody>

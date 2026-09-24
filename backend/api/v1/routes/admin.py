@@ -7,6 +7,7 @@ from database import get_db
 from models.user import User
 from models.token_usage import TokenUsage
 from services.auth import get_current_user
+from services.token_usage_service import total_cost_usd
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -55,41 +56,45 @@ async def daily_usage(
     if source != "all":
         conditions.append(TokenUsage.source == source)
 
-    # group by day trunc UTC
+    # group by day trunc UTC (+ model so cost can be priced per model)
     day_col = func.date_trunc("day", TokenUsage.created_at).label("day")
     stmt = (
         select(
             day_col,
-            func.sum(TokenUsage.total_tokens).label("total_tokens"),
+            TokenUsage.model,
             func.sum(TokenUsage.prompt_tokens).label("prompt_tokens"),
             func.sum(TokenUsage.completion_tokens).label("completion_tokens"),
+            func.sum(TokenUsage.total_tokens).label("total_tokens"),
             func.count(TokenUsage.id).label("query_count"),
         )
         .where(and_(*conditions))
-        .group_by(day_col)
+        .group_by(day_col, TokenUsage.model)
         .order_by(day_col)
     )
     result = await db.execute(stmt)
     rows = result.all()
 
     # fill missing days for continuous chart
-    data_by_day = {r.day.date().isoformat(): r for r in rows}
+    data_by_day: dict[str, list] = {}
+    for r in rows:
+        data_by_day.setdefault(r.day.date().isoformat(), []).append(r)
     out = []
     cur = start_dt.date()
     end_date = end_dt.date()
     while cur <= end_date:
         key = cur.isoformat()
-        r = data_by_day.get(key)
-        if r:
+        day_rows = data_by_day.get(key, [])
+        if day_rows:
             out.append({
                 "date": key,
-                "total_tokens": int(r.total_tokens or 0),
-                "prompt_tokens": int(r.prompt_tokens or 0),
-                "completion_tokens": int(r.completion_tokens or 0),
-                "query_count": int(r.query_count or 0),
+                "total_tokens": int(sum(r.total_tokens or 0 for r in day_rows)),
+                "prompt_tokens": int(sum(r.prompt_tokens or 0 for r in day_rows)),
+                "completion_tokens": int(sum(r.completion_tokens or 0 for r in day_rows)),
+                "query_count": int(sum(r.query_count or 0 for r in day_rows)),
+                "cost_usd": round(total_cost_usd(day_rows), 6),
             })
         else:
-            out.append({"date": key, "total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "query_count": 0})
+            out.append({"date": key, "total_tokens": 0, "prompt_tokens": 0, "completion_tokens": 0, "query_count": 0, "cost_usd": 0.0})
         cur += timedelta(days=1)
 
     return {"data": out, "start": start_dt.date().isoformat(), "end": end_dt.date().isoformat(), "source": source}
@@ -125,6 +130,7 @@ async def top_users(
             TokenUsage.user_id,
             User.email,
             User.name,
+            TokenUsage.model,
             func.sum(TokenUsage.total_tokens).label("total_tokens"),
             func.sum(TokenUsage.prompt_tokens).label("prompt_tokens"),
             func.sum(TokenUsage.completion_tokens).label("completion_tokens"),
@@ -132,24 +138,32 @@ async def top_users(
         )
         .join(User, User.id == TokenUsage.user_id)
         .where(and_(*conditions))
-        .group_by(TokenUsage.user_id, User.email, User.name)
+        .group_by(TokenUsage.user_id, User.email, User.name, TokenUsage.model)
         .order_by(func.sum(TokenUsage.total_tokens).desc())
-        .limit(limit)
+        .limit(limit * 5)  # over-fetch: per-model rows collapse per user below
     )
     result = await db.execute(stmt)
     rows = result.all()
-    data = [
-        {
+    by_user: dict = {}
+    for r in rows:
+        entry = by_user.setdefault(str(r.user_id), {
             "user_id": str(r.user_id),
             "email": r.email,
             "name": r.name,
-            "total_tokens": int(r.total_tokens or 0),
-            "prompt_tokens": int(r.prompt_tokens or 0),
-            "completion_tokens": int(r.completion_tokens or 0),
-            "query_count": int(r.query_count or 0),
-        }
-        for r in rows
-    ]
+            "total_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "query_count": 0,
+            "cost_usd": 0.0,
+        })
+        entry["total_tokens"] += int(r.total_tokens or 0)
+        entry["prompt_tokens"] += int(r.prompt_tokens or 0)
+        entry["completion_tokens"] += int(r.completion_tokens or 0)
+        entry["query_count"] += int(r.query_count or 0)
+        entry["cost_usd"] += total_cost_usd([r])
+    data = sorted(by_user.values(), key=lambda e: e["total_tokens"], reverse=True)[:limit]
+    for e in data:
+        e["cost_usd"] = round(e["cost_usd"], 6)
     return {"data": data, "start": start_dt.date().isoformat(), "end": end_dt.date().isoformat(), "source": source}
 
 
@@ -172,6 +186,22 @@ async def summary(
         res = await db.execute(stmt)
         return int(res.scalar() or 0)
 
+    async def _cost_since(since: datetime) -> float:
+        conditions = [TokenUsage.created_at >= since]
+        if source != "all":
+            conditions.append(TokenUsage.source == source)
+        stmt = (
+            select(
+                TokenUsage.model,
+                func.sum(TokenUsage.prompt_tokens).label("prompt_tokens"),
+                func.sum(TokenUsage.completion_tokens).label("completion_tokens"),
+            )
+            .where(and_(*conditions))
+            .group_by(TokenUsage.model)
+        )
+        res = await db.execute(stmt)
+        return round(total_cost_usd(res.all()), 6)
+
     total = await _sum_since(datetime(1970, 1, 1, tzinfo=timezone.utc))
     today = await _sum_since(today_start)
     week = await _sum_since(week_start)
@@ -191,6 +221,10 @@ async def summary(
         "last_30d_tokens": month,
         "active_users_30d": active_users,
         "source": source,
+        "total_cost_usd": await _cost_since(datetime(1970, 1, 1, tzinfo=timezone.utc)),
+        "today_cost_usd": await _cost_since(today_start),
+        "last_7d_cost_usd": await _cost_since(week_start),
+        "last_30d_cost_usd": await _cost_since(month_start),
     }
 
 
@@ -220,31 +254,34 @@ async def top_per_day(
         conditions.append(TokenUsage.source == source)
 
     day_col = func.date_trunc("day", TokenUsage.created_at).label("day")
-    # subquery sum per day per user
+    # subquery sum per day per user per model (model needed for cost pricing)
     sub = (
         select(
             day_col.label("day"),
             TokenUsage.user_id.label("user_id"),
+            TokenUsage.model.label("model"),
             func.sum(TokenUsage.total_tokens).label("total"),
+            func.sum(TokenUsage.prompt_tokens).label("prompt_tokens"),
+            func.sum(TokenUsage.completion_tokens).label("completion_tokens"),
         )
         .where(and_(*conditions))
-        .group_by(day_col, TokenUsage.user_id)
+        .group_by(day_col, TokenUsage.user_id, TokenUsage.model)
         .subquery()
     )
     # rank per day
     from sqlalchemy import func as sa_func
     # Use DISTINCT ON approach for postgres: select max per day
     # Simpler: fetch all and compute max in python
-    stmt = select(sub.c.day, sub.c.user_id, sub.c.total)
+    stmt = select(sub.c.day, sub.c.user_id, sub.c.model, sub.c.total, sub.c.prompt_tokens, sub.c.completion_tokens)
     result = await db.execute(stmt)
     rows = result.all()
     # group by day
     from collections import defaultdict
     by_day = defaultdict(list)
     for r in rows:
-        by_day[r.day.date().isoformat()].append((r.user_id, r.total))
+        by_day[r.day.date().isoformat()].append(r)
     # fetch user emails
-    user_ids = {uid for lst in by_day.values() for uid, _ in lst}
+    user_ids = {r.user_id for lst in by_day.values() for r in lst}
     email_map = {}
     if user_ids:
         res = await db.execute(select(User.id, User.email, User.name).where(User.id.in_(list(user_ids))))
@@ -257,10 +294,22 @@ async def top_per_day(
         key = cur.isoformat()
         lst = by_day.get(key, [])
         if lst:
-            top_uid, top_total = max(lst, key=lambda x: x[1])
+            # top consumer by tokens; cost priced across their per-model rows
+            totals: dict = defaultdict(int)
+            for r in lst:
+                totals[r.user_id] += int(r.total or 0)
+            top_uid = max(totals, key=lambda uid: totals[uid])
+            top_rows = [r for r in lst if r.user_id == top_uid]
             email, name = email_map.get(top_uid, ("unknown", "unknown"))
-            out.append({"date": key, "user_id": str(top_uid), "email": email, "name": name, "total_tokens": int(top_total)})
+            out.append({
+                "date": key,
+                "user_id": str(top_uid),
+                "email": email,
+                "name": name,
+                "total_tokens": totals[top_uid],
+                "cost_usd": round(total_cost_usd(top_rows), 6),
+            })
         else:
-            out.append({"date": key, "user_id": None, "email": None, "name": None, "total_tokens": 0})
+            out.append({"date": key, "user_id": None, "email": None, "name": None, "total_tokens": 0, "cost_usd": 0.0})
         cur += timedelta(days=1)
     return {"data": out}
