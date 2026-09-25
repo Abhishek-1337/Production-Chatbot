@@ -31,6 +31,67 @@ def _parse_date(value: str | None, default: date | None = None) -> datetime | No
         raise HTTPException(status_code=400, detail=f"Invalid date format: {value}, use YYYY-MM-DD")
 
 
+def _resolve_range(start: str | None, end: str | None) -> tuple[datetime, datetime]:
+    """Shared default: last 30 days (today inclusive), UTC day boundaries."""
+    now = datetime.now(timezone.utc).date()
+    if start is None:
+        start_dt = datetime.combine(now - timedelta(days=29), datetime.min.time(), tzinfo=timezone.utc)
+    else:
+        start_dt = _parse_date(start)
+        assert start_dt is not None
+        start_dt = datetime.combine(start_dt.date(), datetime.min.time(), tzinfo=timezone.utc)
+    if end is None:
+        end_dt = datetime.combine(now, datetime.max.time(), tzinfo=timezone.utc)
+    else:
+        end_dt = _parse_date(end)
+        assert end_dt is not None
+        end_dt = datetime.combine(end_dt.date(), datetime.max.time(), tzinfo=timezone.utc)
+    return start_dt, end_dt
+
+
+@router.get("/token-usage/by-source")
+async def by_source(
+    admin: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    start: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    end: str | None = Query(None, description="End date YYYY-MM-DD"),
+):
+    """Tokens + cost per source (llm/embedding/summary/…) for the range, unfiltered."""
+    start_dt, end_dt = _resolve_range(start, end)
+    stmt = (
+        select(
+            TokenUsage.source,
+            TokenUsage.model,
+            func.sum(TokenUsage.total_tokens).label("total_tokens"),
+            func.sum(TokenUsage.prompt_tokens).label("prompt_tokens"),
+            func.sum(TokenUsage.completion_tokens).label("completion_tokens"),
+            func.count(TokenUsage.id).label("query_count"),
+        )
+        .where(and_(TokenUsage.created_at >= start_dt, TokenUsage.created_at <= end_dt))
+        .group_by(TokenUsage.source, TokenUsage.model)
+    )
+    result = await db.execute(stmt)
+    by_src: dict[str, dict] = {}
+    for r in result.all():
+        entry = by_src.setdefault(r.source, {
+            "source": r.source,
+            "total_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "query_count": 0,
+            "cost_usd": 0.0,
+        })
+        entry["total_tokens"] += int(r.total_tokens or 0)
+        entry["prompt_tokens"] += int(r.prompt_tokens or 0)
+        entry["completion_tokens"] += int(r.completion_tokens or 0)
+        entry["query_count"] += int(r.query_count or 0)
+        entry["cost_usd"] += total_cost_usd([r])
+    data = sorted(by_src.values(), key=lambda e: e["total_tokens"], reverse=True)
+    for e in data:
+        e["cost_usd"] = round(e["cost_usd"], 6)
+    return {"data": data, "start": start_dt.date().isoformat(), "end": end_dt.date().isoformat()}
+
+
 @router.get("/token-usage/daily")
 async def daily_usage(
     admin: Annotated[User, Depends(require_admin)],

@@ -54,6 +54,14 @@ type TopDayRow = {
   total_tokens: number;
   cost_usd: number;
 };
+type SourceRow = {
+  source: string;
+  total_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  query_count: number;
+  cost_usd: number;
+};
 
 function formatUSD(v: number | undefined | null) {
   const n = v ?? 0;
@@ -79,15 +87,17 @@ export default function AdminDashboard() {
   const [topUsers, setTopUsers] = useState<TopUser[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [topPerDay, setTopPerDay] = useState<TopDayRow[]>([]);
+  const [bySource, setBySource] = useState<SourceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const token = getToken();
 
-  const fetchAll = async () => {
+  const fetchAll = async (sourceOverride?: string) => {
     setLoading(true);
     setError("");
     try {
-      const qs = `start=${start}&end=${end}&source=${source}`;
+      const src = sourceOverride ?? source;
+      const qs = `start=${start}&end=${end}&source=${src}`;
       const d1 = await fetch(`${API_URL}/admin/token-usage/daily?${qs}`, {
         credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
@@ -107,7 +117,7 @@ export default function AdminDashboard() {
       const j2 = await d2.json();
       setTopUsers(j2.data);
 
-      const d3 = await fetch(`${API_URL}/admin/token-usage/summary?source=${source}`, {
+      const d3 = await fetch(`${API_URL}/admin/token-usage/summary?source=${src}`, {
         credentials: "include",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -124,11 +134,25 @@ export default function AdminDashboard() {
         const j4 = await d4.json();
         setTopPerDay(j4.data);
       }
+
+      const d5 = await fetch(`${API_URL}/admin/token-usage/by-source?start=${start}&end=${end}`, {
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (d5.ok) {
+        const j5 = await d5.json();
+        setBySource(j5.data);
+      }
     } catch (e: any) {
       setError(e.message ?? "Failed to load");
     } finally {
       setLoading(false);
     }
+  };
+
+  const filterBySource = (src: "all" | "llm" | "embedding" | "summary") => {
+    setSource(src);
+    void fetchAll(src);
   };
 
   useEffect(() => {
@@ -170,6 +194,30 @@ export default function AdminDashboard() {
         </div>
 
         {error && <div className="mb-4 rounded bg-red-50 border border-red-200 text-red-700 px-4 py-2 text-sm">{error}</div>}
+
+        {bySource.length > 0 && (
+          <div className="flex flex-wrap gap-3 mb-6">
+            <button
+              onClick={() => filterBySource("all")}
+              className={`rounded-xl border p-3 text-left min-w-[140px] ${source === "all" ? "border-[#7eb587] ring-1 ring-[#7eb587] bg-white dark:bg-[#1e323a]" : "border-[var(--line)] bg-white/60 dark:bg-[#1a2a30]/60"}`}
+            >
+              <div className="text-xs text-[var(--muted)]">All sources</div>
+              <div className="text-lg font-semibold">{bySource.reduce((n, r) => n + r.total_tokens, 0).toLocaleString()}</div>
+              <div className="text-[11px] text-[var(--muted)]">{formatUSD(bySource.reduce((n, r) => n + (r.cost_usd ?? 0), 0))}</div>
+            </button>
+            {bySource.map((r) => (
+              <button
+                key={r.source}
+                onClick={() => filterBySource(r.source as "llm" | "embedding" | "summary")}
+                className={`rounded-xl border p-3 text-left min-w-[140px] ${source === r.source ? "border-[#7eb587] ring-1 ring-[#7eb587] bg-white dark:bg-[#1e323a]" : "border-[var(--line)] bg-white/60 dark:bg-[#1a2a30]/60"}`}
+              >
+                <div className="text-xs text-[var(--muted)] capitalize">{r.source}</div>
+                <div className="text-lg font-semibold">{r.total_tokens.toLocaleString()}</div>
+                <div className="text-[11px] text-[var(--muted)]">{formatUSD(r.cost_usd)} · {r.query_count} queries</div>
+              </button>
+            ))}
+          </div>
+        )}
 
         {summary && (
           <div id="summary" className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 scroll-mt-4">
